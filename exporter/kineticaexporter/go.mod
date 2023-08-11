@@ -1,9 +1,9 @@
-module bitbucket.org/gisfederal/opentelemetry/exporter/kineticaexporter
+module github.com/kineticadb/otel-exporter/exporter/kineticaexporter
 
 go 1.20
 
 require (
-	bitbucket.org/gisfederal/gpudb-api-go v0.0.9
+	github.com/kineticadb/kinetica-api-go v0.0.2
 	go.opentelemetry.io/collector/component v0.76.1
 	go.opentelemetry.io/collector/exporter v0.76.1
 	go.uber.org/zap v1.24.0

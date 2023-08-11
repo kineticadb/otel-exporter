@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"sync"
 
-	"bitbucket.org/gisfederal/gpudb-api-go/kinetica"
 	"github.com/google/uuid"
+	"github.com/kineticadb/kinetica-api-go/kinetica"
 	orderedmap "github.com/wk8/go-ordered-map"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/multierr"
