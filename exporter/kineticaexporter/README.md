@@ -42,7 +42,7 @@ dist:
 
 exporters:
   - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.78.0
+      github.com/kineticadb/otel-exporter/exporter/kineticaexporter v0.78.0
 
 processors:
   - gomod:
