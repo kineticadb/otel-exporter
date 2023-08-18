@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/influxdata/influxdb-observability/common"
 	"github.com/samber/lo"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -195,7 +194,7 @@ func (e *kineticaLogsExporter) createLogRecord(_ context.Context, resource pcomm
 	})
 
 	if droppedAttributesCount > 0 {
-		fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
+		fields["dropped_attributes_count"] = droppedAttributesCount
 	}
 
 	severityNumber, ok := (fields[AttributeSeverityNumber]).(int)
