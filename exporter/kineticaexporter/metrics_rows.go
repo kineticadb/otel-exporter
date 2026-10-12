@@ -15,7 +15,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-// metric_type values of the v2 series table
+// metric_type values of the series table
 const (
 	metricTypeGauge        = "gauge"
 	metricTypeSum          = "sum"
@@ -24,7 +24,7 @@ const (
 	metricTypeSummary      = "summary"
 )
 
-// Rows of the v2 metrics tables. Each field is written to the column its tag
+// Rows of the metric tables. Each field is written to the column its tag
 // names; a nil pointer is written as null.
 
 type seriesRow struct {
@@ -105,8 +105,8 @@ type exemplarRow struct {
 	FilteredAttributes string  `kinetica:"filtered_attributes"`
 }
 
-// metricsV2Batch - the rows of one export, by table
-type metricsV2Batch struct {
+// metricsBatch - the rows of one export, by table
+type metricsBatch struct {
 	series             []seriesRow
 	numberPoints       []numberPointRow
 	histogramPoints    []histogramPointRow
@@ -115,9 +115,9 @@ type metricsV2Batch struct {
 	exemplars          []exemplarRow
 }
 
-// metricsV2BatchBuilder - turns [pmetric.Metrics] into the rows of the v2
+// metricsBatchBuilder - turns [pmetric.Metrics] into the rows of the metric
 // tables
-type metricsV2BatchBuilder struct {
+type metricsBatchBuilder struct {
 	enc *attributeEncoder
 	// known reports a series already written, whose row is not built again;
 	// nil knows none
@@ -147,7 +147,7 @@ type metricContext struct {
 
 // batchState - the batch being built, and the series it already has
 type batchState struct {
-	batch *metricsV2Batch
+	batch *metricsBatch
 	seen  map[int64]struct{}
 	errs  error
 }
@@ -158,10 +158,10 @@ type batchState struct {
 //
 //	@receiver b
 //	@param md
-//	@return *metricsV2Batch
+//	@return *metricsBatch
 //	@return error
-func (b *metricsV2BatchBuilder) build(md pmetric.Metrics) (*metricsV2Batch, error) {
-	state := &batchState{batch: &metricsV2Batch{}, seen: map[int64]struct{}{}}
+func (b *metricsBatchBuilder) build(md pmetric.Metrics) (*metricsBatch, error) {
+	state := &batchState{batch: &metricsBatch{}, seen: map[int64]struct{}{}}
 
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		resourceMetrics := md.ResourceMetrics().At(i)
@@ -217,7 +217,7 @@ func (b *metricsV2BatchBuilder) build(md pmetric.Metrics) (*metricsV2Batch, erro
 }
 
 // addMetric - adds the rows of a metric's data points
-func (b *metricsV2BatchBuilder) addMetric(state *batchState, sc *scopeContext, metric pmetric.Metric) {
+func (b *metricsBatchBuilder) addMetric(state *batchState, sc *scopeContext, metric pmetric.Metric) {
 	mc := &metricContext{
 		scopeContext: sc,
 		name:         metric.Name(),
@@ -329,7 +329,7 @@ func (b *metricsV2BatchBuilder) addMetric(state *batchState, sc *scopeContext, m
 }
 
 // addNumberPoint - adds a gauge or sum data point
-func (b *metricsV2BatchBuilder) addNumberPoint(state *batchState, mc *metricContext, dp pmetric.NumberDataPoint) {
+func (b *metricsBatchBuilder) addNumberPoint(state *batchState, mc *metricContext, dp pmetric.NumberDataPoint) {
 	seriesID, ok := b.seriesFor(state, mc, dp.Attributes(), dp.Timestamp())
 	if !ok {
 		return
@@ -345,7 +345,7 @@ func (b *metricsV2BatchBuilder) addNumberPoint(state *batchState, mc *metricCont
 }
 
 // addExemplars - adds a data point's exemplars
-func (b *metricsV2BatchBuilder) addExemplars(state *batchState, seriesID int64, pointTime pcommon.Timestamp, exemplars pmetric.ExemplarSlice) {
+func (b *metricsBatchBuilder) addExemplars(state *batchState, seriesID int64, pointTime pcommon.Timestamp, exemplars pmetric.ExemplarSlice) {
 	for i := 0; i < exemplars.Len(); i++ {
 		exemplar := exemplars.At(i)
 		filtered, err := b.enc.canonicalJSON(exemplar.FilteredAttributes())
@@ -377,7 +377,7 @@ func (b *metricsV2BatchBuilder) addExemplars(state *batchState, seriesID int64, 
 //
 //	@return int64 - the series ID
 //	@return bool - false when the attributes cannot be encoded
-func (b *metricsV2BatchBuilder) seriesFor(state *batchState, mc *metricContext, attributes pcommon.Map, timestamp pcommon.Timestamp) (int64, bool) {
+func (b *metricsBatchBuilder) seriesFor(state *batchState, mc *metricContext, attributes pcommon.Map, timestamp pcommon.Timestamp) (int64, bool) {
 	attributesJSON, err := b.enc.canonicalJSON(attributes)
 	if err != nil {
 		state.errs = multierr.Append(state.errs, fmt.Errorf("data point attributes of %s: %w", mc.name, err))

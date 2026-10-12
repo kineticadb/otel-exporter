@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "What the exporter has written in the v2 metrics layout: metrics, series, labels and ingest volume.",
+  "description": "What the Kinetica exporter has written to its metric tables: metrics, series, labels and ingest volume.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -20,7 +20,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### Inventory\nThe metrics, series and labels in the v2 metrics layout, and the points written. Reads the schema **otel**; for another schema, replace `otel.` in the panel queries."
+        "content": "### Inventory\nThe metrics, series and labels in the metric tables, and the points written. Reads the schema **otel**; for another schema, replace `otel.` in the panel queries."
       }
     },
     {

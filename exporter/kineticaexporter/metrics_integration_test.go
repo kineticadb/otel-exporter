@@ -19,15 +19,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestMetricsV2Integration writes metrics in the v2 layout to a live server
-// and runs the text-search queries the layout is designed for. It needs a
+// TestMetricsIntegration writes metrics to a live server and runs the
+// text-search queries the metric tables are designed for. It needs a
 // server with enable_text_search = true, and is skipped unless
 // KINETICA_TEST_URL is set (with KINETICA_TEST_USER and
 // KINETICA_TEST_PASSWORD). It works in a schema of its own, dropped at the
 // end.
-func TestMetricsV2Integration(t *testing.T) {
+func TestMetricsIntegration(t *testing.T) {
 	ctx := context.Background()
-	exp, schema := startLiveMetricsV2(t, "otel_it")
+	exp, schema := startLiveMetrics(t, "otel_it")
 
 	client, err := kinetica.NewSQLClient(exp.writer.GetDb())
 	require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestMetricsV2Integration(t *testing.T) {
 		return n
 	}
 
-	require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
+	require.NoError(t, exp.pushMetricsData(ctx, newTestMetrics()))
 
 	t.Run("rows", func(t *testing.T) {
 		assert.EqualValues(t, 5, count(t, "SELECT COUNT(*) FROM "+table(MetricSeriesTable)))
@@ -123,9 +123,9 @@ JOIN ` + table(MetricNumberPointTable) + ` p ON p.series_id = s.series_id`
 	})
 
 	t.Run("a retried export adds no series or points", func(t *testing.T) {
-		require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
-		exp.v2.cache = newSeriesCache(0) // as after a restart
-		require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
+		require.NoError(t, exp.pushMetricsData(ctx, newTestMetrics()))
+		exp.metrics.cache = newSeriesCache(0) // as after a restart
+		require.NoError(t, exp.pushMetricsData(ctx, newTestMetrics()))
 
 		assert.EqualValues(t, 5, count(t, "SELECT COUNT(*) FROM "+series))
 		assert.EqualValues(t, 3, count(t, "SELECT COUNT(*) FROM "+table(MetricNumberPointTable)))
@@ -146,14 +146,14 @@ func templateTestMetric(template string) string {
 	}
 }
 
-// startLiveMetricsV2 - a started v2 metrics exporter writing to a schema of
+// startLiveMetrics - a started metrics exporter writing to a schema of
 // its own on the server KINETICA_TEST_URL names, which is dropped when the
 // test ends; the test is skipped when KINETICA_TEST_URL is not set
 //
 //	@param schemaPrefix - the start of the schema's name
 //	@return *kineticaMetricsExporter
 //	@return string - the schema
-func startLiveMetricsV2(t *testing.T, schemaPrefix string) (*kineticaMetricsExporter, string) {
+func startLiveMetrics(t *testing.T, schemaPrefix string) (*kineticaMetricsExporter, string) {
 	t.Helper()
 	url := os.Getenv("KINETICA_TEST_URL")
 	if url == "" {
@@ -166,7 +166,6 @@ func startLiveMetricsV2(t *testing.T, schemaPrefix string) (*kineticaMetricsExpo
 		cfg.Username = os.Getenv("KINETICA_TEST_USER")
 		cfg.Password = configopaque.String(os.Getenv("KINETICA_TEST_PASSWORD"))
 		cfg.Schema = schema
-		cfg.MetricsSchema = MetricsSchemaV2
 	})
 
 	exp, err := newMetricsExporter(zap.NewNop(), cfg)

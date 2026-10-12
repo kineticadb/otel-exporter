@@ -278,17 +278,17 @@ func abs(f float64) float64 {
 	return f
 }
 
-// TestMetricsV2Spike is the validation spike of the v2 metrics layout: on a
+// TestMetricsSpike is the validation spike of the metric tables: on a
 // live server, it writes metrics whose results are known and checks the
 // values the text search, the query templates, the rollups and the
 // dashboard queries return. Skipped unless KINETICA_TEST_URL is set.
-func TestMetricsV2Spike(t *testing.T) {
+func TestMetricsSpike(t *testing.T) {
 	ctx := context.Background()
-	exp, schema := startLiveMetricsV2(t, "otel_spike")
+	exp, schema := startLiveMetrics(t, "otel_spike")
 	db := exp.writer.GetDb()
 	// Recent enough for the rollup procedures, which read the last minutes
 	data := spikeData{base: time.Now().UTC().Truncate(time.Minute).Add(-5 * time.Minute)}
-	require.NoError(t, exp.pushMetricsDataV2(ctx, data.metrics()))
+	require.NoError(t, exp.pushMetricsData(ctx, data.metrics()))
 
 	series := schema + "." + MetricSeriesTable
 	matching := func(t *testing.T, metric string, where string) int {

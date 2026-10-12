@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-func TestMetricsV2TableDDLsWithAnalyzer(t *testing.T) {
-	ddls := metricsV2TableDDLs("keyword")
+func TestMetricTableDDLsWithAnalyzer(t *testing.T) {
+	ddls := metricTableDDLs("keyword")
 
 	require.Len(t, ddls, 6)
 	series := ddls[0]
@@ -23,20 +23,20 @@ func TestMetricsV2TableDDLsWithAnalyzer(t *testing.T) {
 	assert.NotContains(t, series, textIndexPlaceholder)
 }
 
-func TestMetricsV2TableDDLsWithoutAnalyzer(t *testing.T) {
-	series := metricsV2TableDDLs("")[0]
+func TestMetricTableDDLsWithoutAnalyzer(t *testing.T) {
+	series := metricTableDDLs("")[0]
 
 	assert.NotContains(t, series, "TEXT INDEX")
 	assert.NotContains(t, series, textIndexPlaceholder)
 	assert.Contains(t, series, "labels JSON (text_search)")
 }
 
-func TestMetricsV2TableDDLsAreShardedOnTheSeries(t *testing.T) {
+func TestMetricTableDDLsAreShardedOnTheSeries(t *testing.T) {
 	tables := []string{
 		MetricSeriesTable, MetricNumberPointTable, MetricHistogramPointTable,
 		MetricExpHistogramPointTable, MetricSummaryPointTable, MetricExemplarTable,
 	}
-	for i, ddl := range metricsV2TableDDLs("keyword") {
+	for i, ddl := range metricTableDDLs("keyword") {
 		stmt := strings.ReplaceAll(ddl, "%s", "otel.")
 		assert.Contains(t, stmt, "CREATE TABLE otel."+tables[i]+"\n")
 		assert.Contains(t, stmt, "SHARD KEY (series_id)")

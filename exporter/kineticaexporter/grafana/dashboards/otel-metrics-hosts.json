@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "Host metrics of the collector's hostmetrics receiver, from the v2 metrics layout.",
+  "description": "Host metrics of the collector's hostmetrics receiver, from the Kinetica exporter's metric tables.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -20,7 +20,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### Hosts\nCPU, memory, filesystem, network and disk metrics of the collector's `hostmetrics` receiver, per `host.name` (set by the `resourcedetection` processor). Reads the tables the Kinetica exporter writes with `metricsschema: v2`, in the schema **otel**; for another schema, replace `otel.` in the panel queries. Rates assume cumulative temporality (the default of most SDKs; for delta, run the collector's `deltatocumulative` processor). Each series is averaged per minute."
+        "content": "### Hosts\nCPU, memory, filesystem, network and disk metrics of the collector's `hostmetrics` receiver, per `host.name` (set by the `resourcedetection` processor). Reads the metric tables the Kinetica exporter writes, in the schema **otel**; for another schema, replace `otel.` in the panel queries. Rates assume cumulative temporality (the default of most SDKs; for delta, run the collector's `deltatocumulative` processor). Each series is averaged per minute."
       }
     },
     {

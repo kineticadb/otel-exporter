@@ -1,3 +1,6 @@
+-- The tables the Kinetica exporter creates, in the schema otel: the same
+-- statements it runs when it starts, with its configured schema in place of
+-- otel. TestDatamodelSQL checks that this file matches them.
 
 ----- Logs
 
@@ -156,493 +159,118 @@ CREATE TABLE "otel"."trace_link_attribute"
 ) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
 
 ------ METRICS
+--
+-- One row per time series in metric_series, keyed by series_id, a hash of
+-- the series' name, type, unit, temporality and attributes; labels holds its
+-- resource, scope and data point attributes as flat JSON (dotted keys kept,
+-- values as strings), searchable with text_match. The data points of each metric type go to a narrow table
+-- of their own. Every table is sharded on series_id, so the join of a series
+-- to its points stays on each rank.
+--
+-- Needs a server with enable_text_search = true. The TEXT INDEX clause is the
+-- exporter's default (metrics.labelsanalyzer: keyword); with an empty
+-- analyzer it is left out. Rollups and retention: sql/metrics/rollups.sql.
 
------- GAUGE
-
-CREATE TABLE otel.metric_gauge
+CREATE TABLE otel.metric_series
 (
-    gauge_id UUID (primary_key, shard_key) not null,
-    metric_name varchar(256) not null,
-    metric_description varchar (256),
-    metric_unit varchar (256)
+    series_id LONG NOT NULL,
+    metric_name VARCHAR (256, dict) NOT NULL,
+    metric_type VARCHAR (16, dict) NOT NULL,
+    unit VARCHAR (64, dict),
+    description VARCHAR (512),
+    temporality INT8,
+    is_monotonic BOOLEAN,
+    service_name VARCHAR (128, dict),
+    scope_name VARCHAR (256, dict),
+    scope_version VARCHAR (64, dict),
+    labels JSON (text_search),
+    resource_attributes JSON,
+    scope_attributes JSON,
+    attributes JSON,
+    first_seen TIMESTAMP NOT NULL,
+    PRIMARY KEY (series_id),
+    SHARD KEY (series_id)
+)
+TEXT INDEX (labels) WITH OPTIONS (analyzer = 'keyword')
+USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
 
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_gauge_datapoint
+-- Gauge and sum data points
+CREATE TABLE otel.metric_number_point
 (
-    gauge_id UUID (primary_key, shard_key) not null,
-    id UUID (primary_key) not null,
-    start_time_unix TIMESTAMP NOT NULL,
+    series_id LONG NOT NULL,
     time_unix TIMESTAMP NOT NULL,
-    gauge_value DOUBLE,
-    flags INT,
-    FOREIGN KEY (gauge_id) references otel.metric_gauge(gauge_id) as fk_gauge_datapoint
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_gauge_datapoint_attribute"
-(
-    "gauge_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (gauge_id) references otel.metric_gauge(gauge_id) as fk_gauge_datapoint_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_gauge_datapoint_exemplar
-(
-    "gauge_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
-    time_unix TIMESTAMP NOT NULL,
-    gauge_value DOUBLE,
-    "trace_id" VARCHAR (32),
-    "span_id" VARCHAR (16),
-    FOREIGN KEY (gauge_id) references otel.metric_gauge(gauge_id) as fk_gauge_datapoint_exemplar
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_gauge_datapoint_exemplar_attribute
-(
-    "gauge_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (gauge_id) references otel.metric_gauge(gauge_id) as fk_gauge_datapoint_exemplar_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_gauge_resource_attribute"
-(
-    "gauge_id" UUID (primary_key) NOT NULL,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (gauge_id),
-    FOREIGN KEY (gauge_id) references otel.metric_gauge(gauge_id) as fk_gauge_resource_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_gauge_scope_attribute"
-(
-    "gauge_id" UUID (primary_key) NOT NULL,
-    "name" VARCHAR (256),
-    "version" VARCHAR (256),
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (gauge_id),
-    FOREIGN KEY (gauge_id) references otel.metric_gauge(gauge_id) as fk_gauge_scope_attribute
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-------- SUM
-
-CREATE TABLE otel.metric_sum
-(
-    sum_id UUID (primary_key, shard_key) not null,
-    metric_name varchar (256) not null,
-    metric_description varchar (256),
-    metric_unit varchar (256),
-    aggregation_temporality INTEGER,
-    is_monotonic BOOLEAN
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_sum_datapoint
-(
-    sum_id UUID (primary_key, shard_key) not null,
-    id UUID (primary_key) not null,
-    start_time_unix TIMESTAMP NOT NULL,
-    time_unix TIMESTAMP NOT NULL,
-    sum_value DOUBLE,
-    flags INT,
-    FOREIGN KEY (sum_id) references otel.metric_sum(sum_id) as fk_sum_datapoint
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_sum_datapoint_attribute"
-(
-    "sum_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (sum_id) references otel.metric_sum(sum_id) as fk_sum_datapoint_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_sum_datapoint_exemplar
-(
-    "sum_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
-    time_unix TIMESTAMP NOT NULL,
-    sum_value DOUBLE,
-    "trace_id" VARCHAR (32),
-    "span_id" VARCHAR (16),
-    FOREIGN KEY (sum_id) references otel.metric_sum(sum_id) as fk_sum_datapoint_exemplar
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_sum_datapoint_exemplar_attribute
-(
-    "sum_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (sum_id) references otel.metric_sum(sum_id) as fk_sum_datapoint_exemplar_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_sum_resource_attribute"
-(
-    "sum_id" UUID (primary_key) NOT NULL,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (sum_id),
-    FOREIGN KEY (sum_id) references otel.metric_sum(sum_id) as fk_sum_resource_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_sum_scope_attribute"
-(
-    "sum_id" UUID (primary_key) NOT NULL,
-    "name" VARCHAR (256),
-    "version" VARCHAR (256),
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (sum_id),
-    FOREIGN KEY (sum_id) references otel.metric_sum(sum_id) as fk_sum_scope_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
------- HISTOGRAM
-
-CREATE TABLE otel.metric_histogram
-(
-    histogram_id UUID (primary_key, shard_key) not null,
-    metric_name varchar (256) not null,
-    metric_description varchar (256),
-    metric_unit varchar (256),
-    aggregation_temporality int8
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_histogram_datapoint
-(
-    histogram_id UUID (primary_key, shard_key) not null,
-    id UUID (primary_key) not null,
     start_time_unix TIMESTAMP,
+    value DOUBLE NOT NULL,
+    flags INT,
+    PRIMARY KEY (series_id, time_unix),
+    SHARD KEY (series_id)
+) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
+
+-- Explicit bucket histogram data points; bucket_counts has one more value
+-- than explicit_bounds, the last being the +Inf bucket
+CREATE TABLE otel.metric_histogram_point
+(
+    series_id LONG NOT NULL,
     time_unix TIMESTAMP NOT NULL,
-    count LONG,
+    start_time_unix TIMESTAMP,
+    data_count LONG NOT NULL,
     data_sum DOUBLE,
     data_min DOUBLE,
     data_max DOUBLE,
+    explicit_bounds JSON,
+    bucket_counts JSON,
     flags INT,
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_datapoint
-
+    PRIMARY KEY (series_id, time_unix),
+    SHARD KEY (series_id)
 ) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
 
-CREATE TABLE otel.metric_histogram_datapoint_bucket_count
+-- Exponential histogram data points
+CREATE TABLE otel.metric_exp_histogram_point
 (
-    histogram_id UUID (primary_key, shard_key) not null,
-    datapoint_id UUID (primary_key) not null,
-    count_id UUID (primary_key) not null,
-    count LONG,
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_datapoint_bucket_count
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_histogram_datapoint_explicit_bound
-(
-    histogram_id UUID (primary_key, shard_key) not null,
-    datapoint_id UUID (primary_key) not null,
-    bound_id UUID (primary_key) not null,
-    explicit_bound DOUBLE,
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_datapoint_explicit_bound
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_histogram_datapoint_attribute"
-(
-    "histogram_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_datapoint_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_histogram_datapoint_exemplar
-(
-    "histogram_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
+    series_id LONG NOT NULL,
     time_unix TIMESTAMP NOT NULL,
-    histogram_value DOUBLE,
-    "trace_id" VARCHAR (32),
-    "span_id" VARCHAR (16),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_datapoint_exemplar
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_histogram_datapoint_exemplar_attribute
-(
-    "histogram_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_datapoint_exemplar_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_histogram_resource_attribute"
-(
-    "histogram_id" UUID (primary_key) NOT NULL,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (histogram_id),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_resource_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_histogram_scope_attribute"
-(
-    "histogram_id" UUID (primary_key) NOT NULL,
-    "name" VARCHAR (256),
-    "version" VARCHAR (256),
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (histogram_id),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_scope_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-
-------- EXPONENTIAL HISTOGRAM
-
-CREATE TABLE otel.metric_exp_histogram
-(
-    histogram_id UUID (primary_key, shard_key) not null,
-    metric_name varchar (256) not null,
-    metric_description varchar (256),
-    metric_unit varchar (256),
-    aggregation_temporality int8
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_exp_histogram_datapoint
-(
-    histogram_id UUID (primary_key, shard_key) not null,
-    id UUID (primary_key) not null,
     start_time_unix TIMESTAMP,
-    time_unix TIMESTAMP NOT NULL,
-    count LONG,
+    data_count LONG NOT NULL,
     data_sum DOUBLE,
-    scale INTEGER,
+    data_min DOUBLE,
+    data_max DOUBLE,
+    scale INT NOT NULL,
     zero_count LONG,
-    buckets_positive_offset INTEGER,
-    buckets_negative_offset INTEGER,
-    data_min DOUBLE,
-    data_max DOUBLE,
+    zero_threshold DOUBLE,
+    positive_offset INT,
+    positive_bucket_counts JSON,
+    negative_offset INT,
+    negative_bucket_counts JSON,
     flags INT,
-    FOREIGN KEY (histogram_id) references otel.metric_exp_histogram(histogram_id) as fk_exp_histogram_datapoint
-
+    PRIMARY KEY (series_id, time_unix),
+    SHARD KEY (series_id)
 ) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
 
-CREATE TABLE otel.metric_exp_histogram_datapoint_bucket_positive_count
+-- Summary data points; quantiles and quantile_values are parallel arrays
+CREATE TABLE otel.metric_summary_point
 (
-    histogram_id UUID (primary_key, shard_key) not null,
-    datapoint_id UUID (primary_key) not null,
-    count_id UUID (primary_key) not null,
-    count LONG,
-    FOREIGN KEY (histogram_id) references otel.metric_exp_histogram(histogram_id) as fk_exp_histogram_datapoint_bucket_count
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_exp_histogram_datapoint_bucket_negative_count
-(
-    histogram_id UUID (primary_key, shard_key) not null,
-    datapoint_id UUID (primary_key) not null,
-    count_id UUID (primary_key) not null,
-    count LONG,
-    FOREIGN KEY (histogram_id) references otel.metric_exp_histogram(histogram_id) as fk_exp_histogram_datapoint_bucket_count
-
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_exp_histogram_datapoint_attribute"
-(
-    "histogram_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (histogram_id) references otel.metric_exp_histogram(histogram_id) as fk_exp_histogram_datapoint_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_exp_histogram_datapoint_exemplar
-(
-    "histogram_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
+    series_id LONG NOT NULL,
     time_unix TIMESTAMP NOT NULL,
-    sum_value DOUBLE,
-    "trace_id" VARCHAR (32),
-    "span_id" VARCHAR (16),
-    FOREIGN KEY (histogram_id) references otel.metric_exp_histogram(histogram_id) as fk_exp_histogram_datapoint_exemplar
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_exp_histogram_datapoint_exemplar_attribute
-(
-    "histogram_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    exemplar_id UUID (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (histogram_id) references otel.metric_exp_histogram(histogram_id) as fk_exp_histogram_datapoint_exemplar_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_exp_histogram_resource_attribute"
-(
-    "histogram_id" UUID (primary_key) NOT NULL,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (histogram_id),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_resource_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_exp_histogram_scope_attribute"
-(
-    "histogram_id" UUID (primary_key) NOT NULL,
-    "name" VARCHAR (256),
-    "version" VARCHAR (256),
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (histogram_id),
-    FOREIGN KEY (histogram_id) references otel.metric_histogram(histogram_id) as fk_histogram_scope_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-------- SUMMARY
-
-CREATE TABLE otel.metric_summary
-(
-    summary_id UUID (primary_key, shard_key) not null,
-    metric_name varchar (256) not null,
-    metric_description varchar (256),
-    metric_unit varchar (256)
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_summary_datapoint
-(
-    summary_id UUID (primary_key, shard_key) not null,
-    id UUID (primary_key) not null,
     start_time_unix TIMESTAMP,
-    time_unix TIMESTAMP NOT NULL,
-    count LONG,
+    data_count LONG NOT NULL,
     data_sum DOUBLE,
+    quantiles JSON,
+    quantile_values JSON,
     flags INT,
-    FOREIGN KEY (summary_id) references otel.metric_summary(summary_id) as fk_summary_datapoint
-
+    PRIMARY KEY (series_id, time_unix),
+    SHARD KEY (series_id)
 ) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
 
-CREATE TABLE "otel"."metric_summary_datapoint_attribute"
+-- The exemplars of every metric type; a data point may have several, so
+-- there is no primary key
+CREATE TABLE otel.metric_exemplar
 (
-    "summary_id" UUID (primary_key, shard_key) NOT NULL,
-    datapoint_id uuid (primary_key) not null,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    FOREIGN KEY (summary_id) references otel.metric_summary(summary_id) as fk_summary_datapoint_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE otel.metric_summary_datapoint_quantile_values
-(
-    summary_id UUID (primary_key, shard_key) not null,
-    datapoint_id UUID (primary_key) not null,
-    quantile_id UUID (primary_key) not null,
-    quantile DOUBLE,
+    series_id LONG NOT NULL,
+    point_time_unix TIMESTAMP NOT NULL,
+    time_unix TIMESTAMP NOT NULL,
     value DOUBLE,
-    FOREIGN KEY (summary_id) references otel.metric_summary(summary_id) as fk_summary_datapoint_quantile
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_summary_resource_attribute"
-(
-    "summary_id" UUID (primary_key) NOT NULL,
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (summary_id),
-    FOREIGN KEY (summary_id) references otel.metric_summary(summary_id) as fk_summary_resource_attribute
-) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);
-
-CREATE TABLE "otel"."metric_summary_scope_attribute"
-(
-    "summary_id" UUID (primary_key) NOT NULL,
-    "name" VARCHAR (256),
-    "version" VARCHAR (256),
-    "key" VARCHAR (primary_key, 128, dict) NOT NULL,
-    "string_value" VARCHAR (256),
-    "bool_value" BOOLEAN,
-    "int_value" INTEGER,
-    "double_value" DOUBLE,
-    "bytes_value" BLOB (store_only),
-    SHARD KEY (summary_id),
-    FOREIGN KEY (summary_id) references otel.metric_summary(summary_id) as fk_summary_scope_attribute
+    trace_id VARCHAR (32),
+    span_id VARCHAR (16),
+    filtered_attributes JSON,
+    SHARD KEY (series_id)
 ) USING TABLE PROPERTIES (NO_ERROR_IF_EXISTS = TRUE);

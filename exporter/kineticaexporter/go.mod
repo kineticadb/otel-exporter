@@ -8,7 +8,6 @@ require (
 	github.com/kineticadb/kinetica-api-go v0.0.2
 	github.com/samber/lo v1.38.1
 	github.com/stretchr/testify v1.8.4
-	github.com/wk8/go-ordered-map v1.0.0
 	go.opentelemetry.io/collector/component v0.83.0
 	go.opentelemetry.io/collector/config/configopaque v0.83.0
 	go.opentelemetry.io/collector/confmap v0.83.0

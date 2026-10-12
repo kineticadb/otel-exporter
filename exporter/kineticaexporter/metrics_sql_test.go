@@ -19,12 +19,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The SQL shipped with the v2 metrics layout: query and rollup templates, and
+// The SQL shipped with the metric tables: query and rollup templates, and
 // the queries of the Grafana dashboards
 var (
 	sqlTemplateFiles = []string{
-		filepath.Join("sql", "metrics_v2", "queries.sql"),
-		filepath.Join("sql", "metrics_v2", "rollups.sql"),
+		filepath.Join("sql", "metrics", "queries.sql"),
+		filepath.Join("sql", "metrics", "rollups.sql"),
 	}
 	dashboardGlob = filepath.Join("grafana", "dashboards", "*.json")
 )
@@ -203,12 +203,12 @@ func withSchema(sql string, schema string) string {
 	return regexp.MustCompile(`(?i)\b(FROM|JOIN)(\s+)otel\.`).ReplaceAllString(sql, "${1}${2}"+schema+".")
 }
 
-// timestampColumns - the TIMESTAMP columns of each v2 table
+// timestampColumns - the TIMESTAMP columns of each metric table
 func timestampColumns() map[string][]string {
 	tablePattern := regexp.MustCompile(`CREATE TABLE %s(\w+)`)
 	columnPattern := regexp.MustCompile(`(?m)^\s*(\w+) TIMESTAMP`)
 	columns := map[string][]string{}
-	for _, ddl := range metricsV2TableDDLs("") {
+	for _, ddl := range metricTableDDLs("") {
 		table := tablePattern.FindStringSubmatch(ddl)[1]
 		for _, match := range columnPattern.FindAllStringSubmatch(ddl, -1) {
 			columns[table] = append(columns[table], match[1])
@@ -331,7 +331,7 @@ func TestDumpSQL(t *testing.T) {
 		statements = append(statements, "-- "+label+"\n"+strings.TrimSuffix(strings.TrimSpace(sql), ";"))
 	}
 
-	for _, ddl := range metricsV2TableDDLs(defaultLabelsAnalyzer) {
+	for _, ddl := range metricTableDDLs(defaultLabelsAnalyzer) {
 		table := regexp.MustCompile(`CREATE TABLE %s(\w+)`).FindStringSubmatch(ddl)[1]
 		add("DDL "+table, strings.ReplaceAll(ddl, "%s", "otel."))
 	}

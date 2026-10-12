@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "HTTP server metrics of the OpenTelemetry semantic conventions, from the v2 metrics layout.",
+  "description": "HTTP server metrics of the OpenTelemetry semantic conventions, from the Kinetica exporter's metric tables.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -20,7 +20,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### HTTP services\nRequest rate, errors and duration per service, from `http.server.request.duration` (a histogram, in seconds) and `http.server.active_requests`. Reads the tables the Kinetica exporter writes with `metricsschema: v2`, in the schema **otel**; for another schema, replace `otel.` in the panel queries. Rates assume cumulative temporality (the default of most SDKs; for delta, run the collector's `deltatocumulative` processor). Each series is averaged per minute."
+        "content": "### HTTP services\nRequest rate, errors and duration per service, from `http.server.request.duration` (a histogram, in seconds) and `http.server.active_requests`. Reads the metric tables the Kinetica exporter writes, in the schema **otel**; for another schema, replace `otel.` in the panel queries. Rates assume cumulative temporality (the default of most SDKs; for delta, run the collector's `deltatocumulative` processor). Each series is averaged per minute."
       }
     },
     {

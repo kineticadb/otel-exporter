@@ -58,19 +58,19 @@ func (l latencies) String() string {
 		at(0.5).Round(time.Millisecond), at(0.95).Round(time.Millisecond), sorted[len(sorted)-1].Round(time.Millisecond))
 }
 
-// TestMetricsV2Load measures the v2 write path on a live server: the rate
+// TestMetricsLoad measures the metrics write path on a live server: the rate
 // of points written through the exporter, alone and while a label search
 // joined to the points runs every 100ms, and while new series keep coming,
 // which keeps the series table's text index changing. Skipped unless both
 // KINETICA_TEST_URL and KINETICA_TEST_LOAD, the number of points of each
 // phase (e.g. 200000), are set. It reports and does not judge the numbers.
-func TestMetricsV2Load(t *testing.T) {
+func TestMetricsLoad(t *testing.T) {
 	total, _ := strconv.Atoi(os.Getenv("KINETICA_TEST_LOAD"))
 	if total <= 0 {
 		t.Skip("set KINETICA_TEST_LOAD to the number of points of each phase, e.g. 200000, to run the load test")
 	}
 	ctx := context.Background()
-	exp, schema := startLiveMetricsV2(t, "otel_load")
+	exp, schema := startLiveMetrics(t, "otel_load")
 	db := exp.writer.GetDb()
 
 	// Each export holds 20 points of each of 2000 series
@@ -133,7 +133,7 @@ JOIN %[1]s.metric_number_point p ON p.series_id = s.series_id`, schema)
 
 		// The client's share: building the rows of one export
 		buildStart := time.Now()
-		_, err := exp.v2.builder.build(batches[0])
+		_, err := exp.metrics.builder.build(batches[0])
 		require.NoError(t, err)
 		build := time.Since(buildStart)
 
@@ -146,7 +146,7 @@ JOIN %[1]s.metric_number_point p ON p.series_id = s.series_id`, schema)
 		}
 		began := time.Now()
 		for _, md := range batches {
-			require.NoError(t, exp.pushMetricsDataV2(ctx, md))
+			require.NoError(t, exp.pushMetricsData(ctx, md))
 		}
 		elapsed := time.Since(began)
 		close(stop)
@@ -166,7 +166,7 @@ JOIN %[1]s.metric_number_point p ON p.series_id = s.series_id`, schema)
 
 	t.Run("known series", func(t *testing.T) {
 		// Writes the series once, then measures points of known series
-		require.NoError(t, exp.pushMetricsDataV2(ctx, loadBatch(0, loadSeries, times()[:1])))
+		require.NoError(t, exp.pushMetricsData(ctx, loadBatch(0, loadSeries, times()[:1])))
 		run(t, "points, no queries", false, func(int) pmetric.Metrics { return loadBatch(0, loadSeries, times()) })
 		run(t, "points, with queries", true, func(int) pmetric.Metrics { return loadBatch(0, loadSeries, times()) })
 	})

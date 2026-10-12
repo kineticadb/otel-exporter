@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Checks the syntax of every SQL statement the exporter ships, with Kinetica's
-# own SQL parser: the v2 table DDL, the query and rollup templates of
-# sql/metrics_v2, and the queries of the Grafana dashboards. No server is
+# own SQL parser: the metric table DDL, the query and rollup templates of
+# sql/metrics, and the queries of the Grafana dashboards. No server is
 # needed, only the gpudbsql jar of a Kinetica install, a JDK and Go.
 #
 # Usage:

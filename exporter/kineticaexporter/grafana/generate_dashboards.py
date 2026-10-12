@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
-"""Generates the Grafana dashboards of the v2 metrics layout into
+"""Generates the Grafana dashboards of the metric tables into
 grafana/dashboards. Run it from the exporter's directory after changing a
 panel, then run the tests (TestDashboards) and tools/sqlcheck/check.sh:
 
@@ -197,7 +197,7 @@ def unit_override(field, unit):
     return {"matcher": {"id": "byName", "options": field}, "properties": [{"id": "unit", "value": unit}]}
 
 
-COMMON_NOTE = ("Reads the tables the Kinetica exporter writes with `metricsschema: v2`, in the schema **otel**; "
+COMMON_NOTE = ("Reads the metric tables the Kinetica exporter writes, in the schema **otel**; "
                "for another schema, replace `otel.` in the panel queries. Rates assume cumulative temporality "
                "(the default of most SDKs; for delta, run the collector's `deltatocumulative` processor). "
                "Each series is averaged per minute.")
@@ -206,7 +206,7 @@ COMMON_NOTE = ("Reads the tables the Kinetica exporter writes with `metricsschem
 def http_dashboard():
     d = Dashboard(
         "kinetica-otel-http", "OTel metrics on Kinetica / HTTP services",
-        "HTTP server metrics of the OpenTelemetry semantic conventions, from the v2 metrics layout.",
+        "HTTP server metrics of the OpenTelemetry semantic conventions, from the Kinetica exporter's metric tables.",
         "### HTTP services\nRequest rate, errors and duration per service, from `http.server.request.duration` "
         "(a histogram, in seconds) and `http.server.active_requests`. " + COMMON_NOTE)
 
@@ -295,7 +295,7 @@ LIMIT 25""",
 def hosts_dashboard():
     d = Dashboard(
         "kinetica-otel-hosts", "OTel metrics on Kinetica / Hosts",
-        "Host metrics of the collector's hostmetrics receiver, from the v2 metrics layout.",
+        "Host metrics of the collector's hostmetrics receiver, from the Kinetica exporter's metric tables.",
         "### Hosts\nCPU, memory, filesystem, network and disk metrics of the collector's `hostmetrics` "
         "receiver, per `host.name` (set by the `resourcedetection` processor). " + COMMON_NOTE)
 
@@ -356,8 +356,8 @@ ORDER BY bucket, host, mountpoint""",
 def inventory_dashboard():
     d = Dashboard(
         "kinetica-otel-inventory", "OTel metrics on Kinetica / Inventory",
-        "What the exporter has written in the v2 metrics layout: metrics, series, labels and ingest volume.",
-        "### Inventory\nThe metrics, series and labels in the v2 metrics layout, and the points written. "
+        "What the Kinetica exporter has written to its metric tables: metrics, series, labels and ingest volume.",
+        "### Inventory\nThe metrics, series and labels in the metric tables, and the points written. "
         "Reads the schema **otel**; for another schema, replace `otel.` in the panel queries.")
 
     d.add_table(

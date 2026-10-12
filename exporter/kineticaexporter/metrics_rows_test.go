@@ -100,8 +100,8 @@ func newTestMetrics() pmetric.Metrics {
 	return md
 }
 
-func newTestBuilder(known func(int64) bool) *metricsV2BatchBuilder {
-	return &metricsV2BatchBuilder{enc: newAttributeEncoder(nil), known: known}
+func newTestBuilder(known func(int64) bool) *metricsBatchBuilder {
+	return &metricsBatchBuilder{enc: newAttributeEncoder(nil), known: known}
 }
 
 func TestBuildWritesOneSeriesRowPerSeries(t *testing.T) {

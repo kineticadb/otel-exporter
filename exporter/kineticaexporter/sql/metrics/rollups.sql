@@ -1,4 +1,4 @@
--- Rollups and retention for the v2 metrics layout (metricsschema: v2)
+-- Rollups and retention for the metric tables
 --
 -- Run these once, in order, after the exporter has created its tables. They
 -- use the same template format as queries.sql: a "-- name:" line, comment

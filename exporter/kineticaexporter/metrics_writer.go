@@ -30,14 +30,14 @@ type errorDrainer interface {
 	DrainErrors() []kinetica.InsertError
 }
 
-// metricsV2Writer - writes metrics in the v2 table layout
-type metricsV2Writer struct {
+// metricsWriter - writes metrics to the metric tables
+type metricsWriter struct {
 	// mu makes the writes of one export one unit: a Flush returns the
 	// failures of the records the same export inserted, and the series
 	// cache learns of a series only once its row is written
 	mu      sync.Mutex
 	logger  *zap.Logger
-	builder *metricsV2BatchBuilder
+	builder *metricsBatchBuilder
 	cache   *seriesCache
 
 	series             rowSink
@@ -48,14 +48,14 @@ type metricsV2Writer struct {
 	exemplars          rowSink
 }
 
-// newMetricsV2Writer - a writer with a BulkInserter per v2 table; the
+// newMetricsWriter - a writer with a BulkInserter per metric table; the
 // tables must exist
 //
 //	@param ctx - bounds the requests the BulkInserters send while starting
 //	@param kiWriter - a connected [KiWriter]
-//	@return *metricsV2Writer
+//	@return *metricsWriter
 //	@return error
-func newMetricsV2Writer(ctx context.Context, kiWriter *KiWriter) (*metricsV2Writer, error) {
+func newMetricsWriter(ctx context.Context, kiWriter *KiWriter) (*metricsWriter, error) {
 	// Retried exports must not duplicate points or series: skip existing keys
 	keyedOptions := func() *kinetica.BulkInserterOptions {
 		return kinetica.NewBulkInserterOptions().
@@ -87,13 +87,13 @@ func newMetricsV2Writer(ctx context.Context, kiWriter *KiWriter) (*metricsV2Writ
 		sinks = append(sinks, inserter)
 	}
 
-	return newMetricsV2WriterWithSinks(kiWriter.logger, kiWriter.cfg.MetricsV2, sinks), nil
+	return newMetricsWriterWithSinks(kiWriter.logger, kiWriter.cfg.Metrics, sinks), nil
 }
 
-// newMetricsV2WriterWithSinks - a writer sending each table's rows to the
-// given sinks, in the order of [newMetricsV2Writer]'s tables
-func newMetricsV2WriterWithSinks(logger *zap.Logger, cfg MetricsV2Config, sinks []rowSink) *metricsV2Writer {
-	w := &metricsV2Writer{
+// newMetricsWriterWithSinks - a writer sending each table's rows to the
+// given sinks, in the order of [newMetricsWriter]'s tables
+func newMetricsWriterWithSinks(logger *zap.Logger, cfg MetricsConfig, sinks []rowSink) *metricsWriter {
+	w := &metricsWriter{
 		logger:             logger,
 		cache:              newSeriesCache(cfg.SeriesCacheSize),
 		series:             sinks[0],
@@ -103,7 +103,7 @@ func newMetricsV2WriterWithSinks(logger *zap.Logger, cfg MetricsV2Config, sinks 
 		summaryPoints:      sinks[4],
 		exemplars:          sinks[5],
 	}
-	w.builder = &metricsV2BatchBuilder{
+	w.builder = &metricsBatchBuilder{
 		enc:   newAttributeEncoder(cfg.ExcludeLabelKeys),
 		known: w.cache.contains,
 	}
@@ -119,7 +119,7 @@ func newMetricsV2WriterWithSinks(logger *zap.Logger, cfg MetricsV2Config, sinks 
 //	@receiver w
 //	@param md
 //	@return error
-func (w *metricsV2Writer) write(md pmetric.Metrics) error {
+func (w *metricsWriter) write(md pmetric.Metrics) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -224,7 +224,7 @@ func wrapTableError(table string, err error) error {
 //
 //	@receiver w
 //	@return error
-func (w *metricsV2Writer) close() error {
+func (w *metricsWriter) close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var errs error

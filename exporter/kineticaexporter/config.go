@@ -35,12 +35,6 @@ var (
 )
 
 const (
-	// MetricsSchemaV1 - one set of attribute tables per metric type
-	MetricsSchemaV1 = "v1"
-	// MetricsSchemaV2 - a series table with the labels as flat, text-searchable
-	// JSON, and one narrow point table per metric type
-	MetricsSchemaV2 = "v2"
-
 	defaultSeriesCacheSize = 1000000
 	defaultLabelsAnalyzer  = "keyword"
 )
@@ -56,13 +50,13 @@ type Config struct {
 	Password           configopaque.String `mapstructure:"password"`
 	BypassSslCertCheck bool                `mapstructure:"bypasssslcertcheck"`
 	LogConfigFile      string              `mapstructure:"logconfigfile"`
-	// MetricsSchema - the table layout metrics are written in: v1 (default) or v2
-	MetricsSchema string          `mapstructure:"metricsschema"`
-	MetricsV2     MetricsV2Config `mapstructure:"metricsv2"`
+	Metrics            MetricsConfig       `mapstructure:"metrics"`
 }
 
-// MetricsV2Config - settings of the v2 metrics table layout
-type MetricsV2Config struct {
+// MetricsConfig - settings of the metric tables: a series table with the
+// labels as flat, text-searchable JSON, and one narrow point table per metric
+// type
+type MetricsConfig struct {
 	// SeriesCacheSize - the number of series IDs remembered as already written
 	SeriesCacheSize int `mapstructure:"seriescachesize"`
 	// LabelsAnalyzer - the text-search analyzer of the labels column; empty
@@ -86,16 +80,11 @@ func (cfg *Config) Validate() error {
 		return errors.New("Protocol must be either `http` or `https`")
 	}
 
-	switch cfg.MetricsSchema {
-	case "", MetricsSchemaV1, MetricsSchemaV2:
-	default:
-		return fmt.Errorf("metricsschema must be either `%s` or `%s`", MetricsSchemaV1, MetricsSchemaV2)
+	if cfg.Metrics.SeriesCacheSize < 0 {
+		return errors.New("metrics.seriescachesize must not be negative")
 	}
-	if cfg.MetricsV2.SeriesCacheSize < 0 {
-		return errors.New("metricsv2.seriescachesize must not be negative")
-	}
-	if cfg.MetricsV2.LabelsAnalyzer != "" && !slices.Contains(labelsAnalyzers, cfg.MetricsV2.LabelsAnalyzer) {
-		return fmt.Errorf("metricsv2.labelsanalyzer must be one of %s", strings.Join(labelsAnalyzers, ", "))
+	if cfg.Metrics.LabelsAnalyzer != "" && !slices.Contains(labelsAnalyzers, cfg.Metrics.LabelsAnalyzer) {
+		return fmt.Errorf("metrics.labelsanalyzer must be one of %s", strings.Join(labelsAnalyzers, ", "))
 	}
 
 	if !fileExists(cfg.LogConfigFile) {

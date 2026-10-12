@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// v2 metrics tables: one row per series in metric_series, with its labels as
+// Metric tables: one row per series in metric_series, with its labels as
 // flat, text-searchable JSON, and the data points of each metric type in a
 // narrow table of its own. Every table is sharded on series_id, so the join
 // of a series to its points stays on each rank.
@@ -141,14 +141,14 @@ const (
 	`
 )
 
-// metricsV2TableDDLs - the statements creating the v2 metrics tables, the
-// schema placeholder left in place for createTablesForMetricType
+// metricTableDDLs - the statements creating the metric tables, the schema
+// placeholder left in place for createMetricTables
 //
 //	@param labelsAnalyzer - the analyzer of the labels column's text index;
 //	empty gives the column the server's default analyzer, with no TEXT INDEX
 //	clause
 //	@return []string
-func metricsV2TableDDLs(labelsAnalyzer string) []string {
+func metricTableDDLs(labelsAnalyzer string) []string {
 	textIndex := ""
 	if labelsAnalyzer != "" {
 		textIndex = fmt.Sprintf("TEXT INDEX (labels) WITH OPTIONS (analyzer = '%s')\n\t", labelsAnalyzer)

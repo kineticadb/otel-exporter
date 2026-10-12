@@ -58,17 +58,3 @@ func TestFactory_CreateMetricsExporter(t *testing.T) {
 
 	require.NoError(t, exporter.Shutdown(context.TODO()))
 }
-
-func TestFactory_CreateMetricsExporterV2(t *testing.T) {
-	factory := NewFactory()
-	cfg := withDefaultConfig(func(cfg *Config) {
-		cfg.Host = defaultHost
-		cfg.MetricsSchema = MetricsSchemaV2
-	})
-	params := exportertest.NewNopCreateSettings()
-	exporter, err := factory.CreateMetricsExporter(context.Background(), params, cfg)
-	require.NoError(t, err)
-	require.NotNil(t, exporter)
-
-	require.NoError(t, exporter.Shutdown(context.TODO()))
-}

@@ -147,14 +147,13 @@ The following parameters will be necessary to define the connection for the
 | password | Kinetica Password |
 | bypasssslcertcheck | Whether to skip SSL certificate check or not (true or false)|
 | logconfigfile | Name of the log config file |
-| metricsschema | The table layout metrics are written in: `v1` (default) or `v2` (see below) |
-| metricsv2.seriescachesize | v2 only: the number of series remembered as already written, so their rows are not sent again (default `1000000`; `0` remembers none) |
-| metricsv2.labelsanalyzer | v2 only: the text-search analyzer of the `labels` column (default `keyword`, exact and case-sensitive); empty uses the server's default |
-| metricsv2.excludelabelkeys | v2 only: attribute keys left out of each series' identity and labels, such as high-cardinality ones. Series that differ only by these keys become one series, and only one of their points at a given time is kept |
+| metrics.seriescachesize | The number of series remembered as already written, so their rows are not sent again (default `1000000`; `0` remembers none) |
+| metrics.labelsanalyzer | The text-search analyzer of the `labels` column (default `keyword`, exact and case-sensitive); empty uses the server's default |
+| metrics.excludelabelkeys | Attribute keys left out of each series' identity and labels, such as high-cardinality ones. Series that differ only by these keys become one series, and only one of their points at a given time is kept |
 
-#### The v2 metrics layout
+#### The metric tables
 
-With `metricsschema: v2` the exporter writes six tables instead of the 38 of `v1`:
+The exporter writes metrics to six tables:
 
 | Table | Holds |
 |--|--|
@@ -176,14 +175,15 @@ FROM (SELECT series_id FROM otel.metric_series
 JOIN otel.metric_number_point p ON p.series_id = s.series_id;
 ```
 
-`v2` needs a Kinetica server with full-text search enabled (`enable_text_search = true`).
+The metric tables need a Kinetica server with full-text search enabled (`enable_text_search = true`).
+`sql/datamodel.sql` holds the statements creating every table of the exporter.
 
-#### Querying the v2 layout
+#### Querying the metric tables
 
 | Path | What |
 |--|--|
-| `sql/metrics_v2/queries.sql` | Query templates: series search (exact, regex, negated), metric catalog, label names and values, gauges, counter and delta rates, histogram rates and means, histogram buckets and quantiles (experimental, delta histograms), exemplars, reads of the rollup |
-| `sql/metrics_v2/rollups.sql` | One-minute and hourly rollups of `metric_number_point`, kept up to date by scheduled SQL procedures, and an optional retention procedure |
+| `sql/metrics/queries.sql` | Query templates: series search (exact, regex, negated), metric catalog, label names and values, gauges, counter and delta rates, histogram rates and means, histogram buckets and quantiles (experimental, delta histograms), exemplars, reads of the rollup |
+| `sql/metrics/rollups.sql` | One-minute and hourly rollups of `metric_number_point`, kept up to date by scheduled SQL procedures, and an optional retention procedure |
 | `grafana/dashboards/` | Grafana dashboards for the Kinetica datasource plugin (`kinetica-datasource`): HTTP services (semantic conventions), hosts (`hostmetrics` receiver) and an inventory of metrics, series and labels |
 | `grafana/generate_dashboards.py` | Generates the dashboards; edit it rather than the JSON |
 | `tools/sqlcheck/` | Checks the syntax of all of this SQL, and of the table DDL, with Kinetica's own SQL parser |
@@ -218,11 +218,11 @@ KINETICA_SQL_JAR=/path/to/gpudbsql-7.2.3.0.jar tools/sqlcheck/check.sh
 ```
 
 To run everything against a server instead, set `KINETICA_TEST_URL`, `KINETICA_TEST_USER` and
-`KINETICA_TEST_PASSWORD`, then run `go test -run 'TestMetricsV2Integration|TestMetricsV2Spike' .`. Each
-test writes metrics to a schema of its own, which it drops at the end. `TestMetricsV2Integration` runs
-every template and dashboard query; `TestMetricsV2Spike` writes metrics whose results are known and
+`KINETICA_TEST_PASSWORD`, then run `go test -run 'TestMetricsIntegration|TestMetricsSpike' .`. Each
+test writes metrics to a schema of its own, which it drops at the end. `TestMetricsIntegration` runs
+every template and dashboard query; `TestMetricsSpike` writes metrics whose results are known and
 checks the exact values the label searches, templates, rollups and dashboard queries return. Setting
-`KINETICA_TEST_LOAD` to a number of points (e.g. `2000000`) also runs `TestMetricsV2Load`, which
+`KINETICA_TEST_LOAD` to a number of points (e.g. `2000000`) also runs `TestMetricsLoad`, which
 reports the write rate with and without concurrent label searches, and with a stream of new series.
 
 ```yaml
@@ -232,8 +232,7 @@ exporters:
     schema: otel
     username: admin
     password: password
-    metricsschema: v2
-    metricsv2:
+    metrics:
       seriescachesize: 1000000
       labelsanalyzer: keyword
       excludelabelkeys: []

@@ -21,7 +21,7 @@ const (
 	serviceNameKey    = "service.name"
 )
 
-// attributeEncoder - encodes attribute maps for the v2 metrics tables
+// attributeEncoder - encodes attribute maps for the metric tables
 type attributeEncoder struct {
 	exclude map[string]struct{}
 }

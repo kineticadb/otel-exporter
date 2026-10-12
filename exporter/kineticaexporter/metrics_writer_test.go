@@ -47,18 +47,18 @@ func (f *fakeSink) DrainErrors() []kinetica.InsertError {
 
 // newTestWriter - a writer over fake sinks: series, number points,
 // histogram points, exp histogram points, summary points and exemplars
-func newTestWriter(cfg MetricsV2Config) (*metricsV2Writer, []*fakeSink) {
+func newTestWriter(cfg MetricsConfig) (*metricsWriter, []*fakeSink) {
 	sinks := make([]*fakeSink, 6)
 	rowSinks := make([]rowSink, 6)
 	for i := range sinks {
 		sinks[i] = &fakeSink{}
 		rowSinks[i] = sinks[i]
 	}
-	return newMetricsV2WriterWithSinks(zap.NewNop(), cfg, rowSinks), sinks
+	return newMetricsWriterWithSinks(zap.NewNop(), cfg, rowSinks), sinks
 }
 
 func TestWriterWritesEveryTable(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 100})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 100})
 
 	require.NoError(t, w.write(newTestMetrics()))
 
@@ -73,7 +73,7 @@ func TestWriterWritesEveryTable(t *testing.T) {
 }
 
 func TestWriterSendsASeriesOnlyOnce(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 100})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 100})
 
 	require.NoError(t, w.write(newTestMetrics()))
 	require.NoError(t, w.write(newTestMetrics()))
@@ -84,7 +84,7 @@ func TestWriterSendsASeriesOnlyOnce(t *testing.T) {
 }
 
 func TestWriterWithoutCacheSendsSeriesEveryTime(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 0})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 0})
 
 	require.NoError(t, w.write(newTestMetrics()))
 	require.NoError(t, w.write(newTestMetrics()))
@@ -93,7 +93,7 @@ func TestWriterWithoutCacheSendsSeriesEveryTime(t *testing.T) {
 }
 
 func TestWriterStopsWhenTheSeriesFail(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 100})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 100})
 	sinks[0].flushErr = errors.New("connection refused")
 
 	err := w.write(newTestMetrics())
@@ -112,7 +112,7 @@ func TestWriterStopsWhenTheSeriesFail(t *testing.T) {
 }
 
 func TestWriterRetriesFailedPoints(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 100})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 100})
 	sinks[1].flushErr = errors.New("server exited")
 
 	err := w.write(newTestMetrics())
@@ -125,7 +125,7 @@ func TestWriterRetriesFailedPoints(t *testing.T) {
 }
 
 func TestWriterReportsRefusedRecordsAsPermanent(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 100})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 100})
 	sinks[2].refused = []kinetica.InsertError{{RecordCount: 1, Message: "invalid value"}}
 
 	err := w.write(newTestMetrics())
@@ -137,7 +137,7 @@ func TestWriterReportsRefusedRecordsAsPermanent(t *testing.T) {
 }
 
 func TestWriterDoesNotRememberRefusedSeries(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{SeriesCacheSize: 100})
+	w, sinks := newTestWriter(MetricsConfig{SeriesCacheSize: 100})
 	sinks[0].refused = []kinetica.InsertError{{RecordCount: 1, Message: "invalid labels"}}
 
 	err := w.write(newTestMetrics())
@@ -148,7 +148,7 @@ func TestWriterDoesNotRememberRefusedSeries(t *testing.T) {
 }
 
 func TestWriterCloseClosesEverySink(t *testing.T) {
-	w, sinks := newTestWriter(MetricsV2Config{})
+	w, sinks := newTestWriter(MetricsConfig{})
 
 	require.NoError(t, w.close())
 

@@ -1,4 +1,4 @@
--- Query templates for the v2 metrics layout (metricsschema: v2)
+-- Query templates for the metric tables
 --
 -- Each template starts with a "-- name:" line, followed by comment lines
 -- describing it and a "-- params:" line listing its placeholders. A
