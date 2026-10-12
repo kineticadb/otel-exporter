@@ -165,9 +165,12 @@ func NewScopeAttribute(logID string, key string, scopeName string, scopeVersion 
 // KiWriter - struct modeling the Kinetica connection, contains the
 // Kinetica connection [kinetica.Kinetica], the Kinetica Options [kinetica.KineticaOptions],
 // the config [Config] and the logger [zap.Logger]
+//
+// The connection holds HA, session and fail-back state, so it is shared by
+// pointer and never copied. It is nil until [KiWriter.Connect] succeeds.
 type KiWriter struct {
-	Db      kinetica.Kinetica
-	Options kinetica.KineticaOptions
+	Db      *kinetica.Kinetica
+	Options *kinetica.KineticaOptions
 	cfg     Config
 	logger  *zap.Logger
 }
@@ -175,16 +178,16 @@ type KiWriter struct {
 // GetDb - Getter for the Kinetica instance
 //
 //	@receiver kiwriter
-//	@return gpudb.Gpudb
-func (kiwriter *KiWriter) GetDb() kinetica.Kinetica {
+//	@return *kinetica.Kinetica - nil until Connect succeeds
+func (kiwriter *KiWriter) GetDb() *kinetica.Kinetica {
 	return kiwriter.Db
 }
 
 // GetOptions - Getter for the Kinetica options.
 //
 //	@receiver kiwriter
-//	@return gpudb.GpudbOptions
-func (kiwriter *KiWriter) GetOptions() kinetica.KineticaOptions {
+//	@return *kinetica.KineticaOptions
+func (kiwriter *KiWriter) GetOptions() *kinetica.KineticaOptions {
 	return kiwriter.Options
 }
 
@@ -196,42 +199,65 @@ func (kiwriter *KiWriter) GetCfg() Config {
 	return kiwriter.cfg
 }
 
-// Writer - global pointer to kiwriter struct initialized in the init func
-var Writer *KiWriter
-
-// init
-func init() {
-	ctx := context.TODO()
-	cfg := CreateDefaultConfig()
-	config := cfg.(*Config)
-	options := kinetica.KineticaOptions{Username: config.Username, Password: string(config.Password), ByPassSslCertCheck: config.BypassSslCertCheck}
-	gpudbInst := kinetica.NewWithOptions(ctx, config.Host, &options)
-	Writer = &KiWriter{*gpudbInst, options, *config, nil}
+// NewKiWriter - Constructor for the [KiWriter] struct. It does not connect;
+// call [KiWriter.Connect] from the exporter's start function.
+//
+//	@param cfg
+//	@param logger
+//	@return *KiWriter
+func NewKiWriter(cfg Config, logger *zap.Logger) *KiWriter {
+	return &KiWriter{Options: newKineticaOptions(&cfg), cfg: cfg, logger: logger}
 }
 
-// NewKiWriter - Constructor for the [KiWriter] struct
+// newKineticaOptions - builds the connection options from the [Config]
+//
+//	@param cfg
+//	@return *kinetica.KineticaOptions
+func newKineticaOptions(cfg *Config) *kinetica.KineticaOptions {
+	return kinetica.NewKineticaOptions().
+		SetUsername(cfg.Username).
+		SetPassword(string(cfg.Password)).
+		SetByPassSslCertCheck(cfg.BypassSslCertCheck)
+}
+
+// Connect - connects to Kinetica, failing if no server answers
+//
+//	@receiver kiwriter
+//	@param ctx - bounds the connection setup only
+//	@return error
+func (kiwriter *KiWriter) Connect(ctx context.Context) error {
+	if kiwriter.Db != nil {
+		return nil
+	}
+	db, err := kinetica.Connect(ctx, []string{kiwriter.cfg.Host}, kiwriter.Options)
+	if err != nil {
+		return fmt.Errorf("cannot connect to Kinetica at %s: %w", kiwriter.cfg.Host, err)
+	}
+	kiwriter.Db = db
+	return nil
+}
+
+// Close - closes the Kinetica connection, if one was made
+//
+//	@receiver kiwriter
+//	@return error
+func (kiwriter *KiWriter) Close() error {
+	if kiwriter.Db == nil {
+		return nil
+	}
+	err := kiwriter.Db.Close()
+	kiwriter.Db = nil
+	return err
+}
+
+// GetGpuDbInst - Creates and returns a new [kinetica.Kinetica] connection
 //
 //	@param ctx
 //	@param cfg
-//	@return *KiWriter
-func NewKiWriter(ctx context.Context, cfg Config, logger *zap.Logger) *KiWriter {
-	options := kinetica.KineticaOptions{Username: cfg.Username, Password: string(cfg.Password), ByPassSslCertCheck: cfg.BypassSslCertCheck}
-	gpudbInst := kinetica.NewWithOptions(ctx, cfg.Host, &options)
-	return &KiWriter{*gpudbInst, options, cfg, logger}
-}
-
-// GetGpuDbInst - Creates and returns a new [kinetica.Kinetica] struct
-//
-//	@param cfg
-//	@return *gpudb.Gpudb
-func GetGpuDbInst(cfg *Config) *kinetica.Kinetica {
-	ctx := context.TODO()
-	options := kinetica.KineticaOptions{Username: cfg.Username, Password: string(cfg.Password), ByPassSslCertCheck: cfg.BypassSslCertCheck}
-	// fmt.Println("Options", options)
-	gpudbInst := kinetica.NewWithOptions(ctx, cfg.Host, &options)
-
-	return gpudbInst
-
+//	@return *kinetica.Kinetica
+//	@return error
+func GetGpuDbInst(ctx context.Context, cfg *Config) (*kinetica.Kinetica, error) {
+	return kinetica.Connect(ctx, []string{cfg.Host}, newKineticaOptions(cfg))
 }
 
 // END Log Handling

@@ -56,3 +56,41 @@ func withDefaultConfig(fns ...func(*Config)) *Config {
 	}
 	return cfg
 }
+
+func TestValidateMetricsSettings(t *testing.T) {
+	tests := []struct {
+		name    string
+		modify  func(*Config)
+		wantErr string
+	}{
+		{name: "default", modify: func(*Config) {}},
+		{name: "v2", modify: func(cfg *Config) { cfg.MetricsSchema = MetricsSchemaV2 }},
+		{name: "unset schema", modify: func(cfg *Config) { cfg.MetricsSchema = "" }},
+		{name: "no text index options", modify: func(cfg *Config) { cfg.MetricsV2.LabelsAnalyzer = "" }},
+		{
+			name:    "unknown schema",
+			modify:  func(cfg *Config) { cfg.MetricsSchema = "v3" },
+			wantErr: "metricsschema",
+		},
+		{
+			name:    "negative cache size",
+			modify:  func(cfg *Config) { cfg.MetricsV2.SeriesCacheSize = -1 },
+			wantErr: "seriescachesize",
+		},
+		{
+			name:    "unknown analyzer",
+			modify:  func(cfg *Config) { cfg.MetricsV2.LabelsAnalyzer = "stemmed" },
+			wantErr: "labelsanalyzer",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := withDefaultConfig(tt.modify).Validate()
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
+}

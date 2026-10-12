@@ -1,0 +1,115 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package kineticaexporter
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/kineticadb/kinetica-api-go/kinetica"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config/configopaque"
+	"go.uber.org/zap"
+)
+
+// TestMetricsV2Integration writes metrics in the v2 layout to a live server
+// and runs the text-search queries the layout is designed for. It needs a
+// server with enable_text_search = true, and is skipped unless
+// KINETICA_TEST_URL is set (with KINETICA_TEST_USER and
+// KINETICA_TEST_PASSWORD). It works in a schema of its own, dropped at the
+// end.
+func TestMetricsV2Integration(t *testing.T) {
+	url := os.Getenv("KINETICA_TEST_URL")
+	if url == "" {
+		t.Skip("set KINETICA_TEST_URL, KINETICA_TEST_USER and KINETICA_TEST_PASSWORD to run against a server")
+	}
+	ctx := context.Background()
+	schema := fmt.Sprintf("otel_it_%d", time.Now().UnixNano())
+	cfg := withDefaultConfig(func(cfg *Config) {
+		cfg.Host = url
+		cfg.Username = os.Getenv("KINETICA_TEST_USER")
+		cfg.Password = configopaque.String(os.Getenv("KINETICA_TEST_PASSWORD"))
+		cfg.Schema = schema
+		cfg.MetricsSchema = MetricsSchemaV2
+	})
+
+	exp, err := newMetricsExporter(zap.NewNop(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, exp.shutdown(ctx))
+		db, err := GetGpuDbInst(ctx, cfg)
+		if assert.NoError(t, err) {
+			_, err = db.Execute(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+			assert.NoError(t, err)
+			assert.NoError(t, db.Close())
+		}
+	})
+	require.NoError(t, exp.start(ctx, componenttest.NewNopHost()))
+
+	client, err := kinetica.NewSQLClient(exp.writer.GetDb())
+	require.NoError(t, err)
+	table := func(name string) string { return schema + "." + name }
+	count := func(t *testing.T, sql string) int64 {
+		result, err := client.Execute(ctx, sql)
+		require.NoError(t, err, sql)
+		n, err := kinetica.SQLResultScalar[int64](result)
+		require.NoError(t, err, sql)
+		return n
+	}
+
+	require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
+
+	t.Run("rows", func(t *testing.T) {
+		assert.EqualValues(t, 5, count(t, "SELECT COUNT(*) FROM "+table(MetricSeriesTable)))
+		assert.EqualValues(t, 3, count(t, "SELECT COUNT(*) FROM "+table(MetricNumberPointTable)))
+		assert.EqualValues(t, 1, count(t, "SELECT COUNT(*) FROM "+table(MetricHistogramPointTable)))
+		assert.EqualValues(t, 1, count(t, "SELECT COUNT(*) FROM "+table(MetricExpHistogramPointTable)))
+		assert.EqualValues(t, 1, count(t, "SELECT COUNT(*) FROM "+table(MetricSummaryPointTable)))
+		assert.EqualValues(t, 1, count(t, "SELECT COUNT(*) FROM "+table(MetricExemplarTable)))
+	})
+
+	series := table(MetricSeriesTable)
+	queries := []struct {
+		name  string
+		where string
+		want  int64
+	}{
+		{"flat dotted key, column prefix", `text_match(labels, 'labels.service.name:"checkout"')`, 5},
+		{"flat dotted key, no prefix", `text_match(labels, 'service.name:"checkout"')`, 5},
+		{"keyword analyzer is case-sensitive", `text_match(labels, 'labels.service.name:"Checkout"')`, 0},
+		{"anchored regex on a dotted key", `text_match(labels, 'labels.http.response.status_code:/2../')`, 1},
+		{"negation includes series without the label", `NOT text_match(labels, 'labels.http.request.method:"GET"')`, 4},
+		{"scope labels", `text_match(labels, 'labels.otel.scope.name:"otelhttp"')`, 5},
+		{"JSON_VALUE with bracket notation", `JSON_VALUE(labels, '$["otel.scope.version"]') = '1.0'`, 5},
+	}
+	for _, q := range queries {
+		t.Run(q.name, func(t *testing.T) {
+			assert.Equal(t, q.want, count(t, "SELECT COUNT(*) FROM "+series+" WHERE "+q.where))
+		})
+	}
+
+	t.Run("search series, join points", func(t *testing.T) {
+		sql := `SELECT COUNT(*)
+FROM (SELECT series_id FROM ` + series + `
+       WHERE metric_name = 'http.server.active_requests'
+         AND text_match(labels, 'labels.http.request.method:"GET"')) s
+JOIN ` + table(MetricNumberPointTable) + ` p ON p.series_id = s.series_id`
+		assert.EqualValues(t, 2, count(t, sql))
+	})
+
+	t.Run("a retried export adds no series or points", func(t *testing.T) {
+		require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
+		exp.v2.cache = newSeriesCache(0) // as after a restart
+		require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
+
+		assert.EqualValues(t, 5, count(t, "SELECT COUNT(*) FROM "+series))
+		assert.EqualValues(t, 3, count(t, "SELECT COUNT(*) FROM "+table(MetricNumberPointTable)))
+		assert.EqualValues(t, 1, count(t, "SELECT COUNT(*) FROM "+table(MetricHistogramPointTable)))
+	})
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,20 @@ var (
 	kineticaLogger *zap.Logger
 )
 
+const (
+	// MetricsSchemaV1 - one set of attribute tables per metric type
+	MetricsSchemaV1 = "v1"
+	// MetricsSchemaV2 - a series table with the labels as flat, text-searchable
+	// JSON, and one narrow point table per metric type
+	MetricsSchemaV2 = "v2"
+
+	defaultSeriesCacheSize = 1000000
+	defaultLabelsAnalyzer  = "keyword"
+)
+
+// labelsAnalyzers - the analyzers Kinetica accepts in a TEXT INDEX clause
+var labelsAnalyzers = []string{"en_stem", "default", "simple", "whitespace", "keyword", "raw"}
+
 // Config defines configuration for the Kinetica exporter.
 type Config struct {
 	Host               string              `mapstructure:"host"`
@@ -41,6 +56,21 @@ type Config struct {
 	Password           configopaque.String `mapstructure:"password"`
 	BypassSslCertCheck bool                `mapstructure:"bypasssslcertcheck"`
 	LogConfigFile      string              `mapstructure:"logconfigfile"`
+	// MetricsSchema - the table layout metrics are written in: v1 (default) or v2
+	MetricsSchema string          `mapstructure:"metricsschema"`
+	MetricsV2     MetricsV2Config `mapstructure:"metricsv2"`
+}
+
+// MetricsV2Config - settings of the v2 metrics table layout
+type MetricsV2Config struct {
+	// SeriesCacheSize - the number of series IDs remembered as already written
+	SeriesCacheSize int `mapstructure:"seriescachesize"`
+	// LabelsAnalyzer - the text-search analyzer of the labels column; empty
+	// leaves the column with the server's default analyzer
+	LabelsAnalyzer string `mapstructure:"labelsanalyzer"`
+	// ExcludeLabelKeys - attribute keys left out of a series' identity and
+	// labels, such as high-cardinality ones
+	ExcludeLabelKeys []string `mapstructure:"excludelabelkeys"`
 }
 
 // Validate the config
@@ -54,6 +84,18 @@ func (cfg *Config) Validate() error {
 	}
 	if kineticaHost.Scheme != "http" && kineticaHost.Scheme != "https" {
 		return errors.New("Protocol must be either `http` or `https`")
+	}
+
+	switch cfg.MetricsSchema {
+	case "", MetricsSchemaV1, MetricsSchemaV2:
+	default:
+		return fmt.Errorf("metricsschema must be either `%s` or `%s`", MetricsSchemaV1, MetricsSchemaV2)
+	}
+	if cfg.MetricsV2.SeriesCacheSize < 0 {
+		return errors.New("metricsv2.seriescachesize must not be negative")
+	}
+	if cfg.MetricsV2.LabelsAnalyzer != "" && !slices.Contains(labelsAnalyzers, cfg.MetricsV2.LabelsAnalyzer) {
+		return fmt.Errorf("metricsv2.labelsanalyzer must be one of %s", strings.Join(labelsAnalyzers, ", "))
 	}
 
 	if !fileExists(cfg.LogConfigFile) {

@@ -35,6 +35,11 @@ func CreateDefaultConfig() component.Config {
 		Username:           "admin",
 		Password:           "password",
 		BypassSslCertCheck: true,
+		MetricsSchema:      MetricsSchemaV1,
+		MetricsV2: MetricsV2Config{
+			SeriesCacheSize: defaultSeriesCacheSize,
+			LabelsAnalyzer:  defaultLabelsAnalyzer,
+		},
 	}
 }
 
@@ -109,11 +114,15 @@ func createMetricsExporter(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("Cannot configure Kinetica metrics exporter: %w", err)
 	}
+	pushMetrics := exporter.pushMetricsData
+	if cf.MetricsSchema == MetricsSchemaV2 {
+		pushMetrics = exporter.pushMetricsDataV2
+	}
 	return exporterhelper.NewMetricsExporter(
 		ctx,
 		set,
 		cfg,
-		exporter.pushMetricsData,
+		pushMetrics,
 		exporterhelper.WithStart(exporter.start),
 		exporterhelper.WithShutdown(exporter.shutdown),
 	)

@@ -147,6 +147,50 @@ The following parameters will be necessary to define the connection for the
 | password | Kinetica Password |
 | bypasssslcertcheck | Whether to skip SSL certificate check or not (true or false)|
 | logconfigfile | Name of the log config file |
+| metricsschema | The table layout metrics are written in: `v1` (default) or `v2` (see below) |
+| metricsv2.seriescachesize | v2 only: the number of series remembered as already written, so their rows are not sent again (default `1000000`; `0` remembers none) |
+| metricsv2.labelsanalyzer | v2 only: the text-search analyzer of the `labels` column (default `keyword`, exact and case-sensitive); empty uses the server's default |
+| metricsv2.excludelabelkeys | v2 only: attribute keys left out of each series' identity and labels, such as high-cardinality ones. Series that differ only by these keys become one series, and only one of their points at a given time is kept |
+
+#### The v2 metrics layout
+
+With `metricsschema: v2` the exporter writes six tables instead of the 38 of `v1`:
+
+| Table | Holds |
+|--|--|
+| `metric_series` | One row per time series, keyed by `series_id`, a hash of its name, type, unit, temporality and attributes. `labels` is the union of its resource, scope and data point attributes as flat JSON (dotted keys kept, values as strings), declared `JSON(text_search)` |
+| `metric_number_point` | Gauge and sum data points |
+| `metric_histogram_point` | Histogram data points, with the bounds and bucket counts as JSON arrays |
+| `metric_exp_histogram_point` | Exponential histogram data points |
+| `metric_summary_point` | Summary data points, with the quantiles as JSON arrays |
+| `metric_exemplar` | Exemplars of every type, with their trace and span IDs |
+
+Every table is sharded on `series_id`. Search the series by label, then join their points:
+
+```sql
+SELECT s.series_id, p.time_unix, p.value
+FROM (SELECT series_id FROM otel.metric_series
+       WHERE metric_name = 'http.server.active_requests'
+         AND text_match(labels, 'labels.service.name:"checkout"')
+         AND text_match(labels, 'labels.http.response.status_code:/5../')) s
+JOIN otel.metric_number_point p ON p.series_id = s.series_id;
+```
+
+`v2` needs a Kinetica server with full-text search enabled (`enable_text_search = true`).
+
+```yaml
+exporters:
+  kinetica:
+    host: http://localhost:9191/
+    schema: otel
+    username: admin
+    password: password
+    metricsschema: v2
+    metricsv2:
+      seriescachesize: 1000000
+      labelsanalyzer: keyword
+      excludelabelkeys: []
+```
 
 ### Configuring Logging
 

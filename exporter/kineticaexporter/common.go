@@ -10,6 +10,7 @@ import (
 	"reflect"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
 const (
@@ -951,4 +952,28 @@ func ChunkBySize[T any](items []T, chunkSize int) [][]T {
 		items, _chunks = items[chunkSize:], append(_chunks, items[0:chunkSize:chunkSize])
 	}
 	return append(_chunks, items)
+}
+
+// numberDataPointValue - the value of a number data point, whether it holds
+// an int or a double
+//
+//	@param datapoint
+//	@return float64
+func numberDataPointValue(datapoint pmetric.NumberDataPoint) float64 {
+	if datapoint.ValueType() == pmetric.NumberDataPointValueTypeInt {
+		return float64(datapoint.IntValue())
+	}
+	return datapoint.DoubleValue()
+}
+
+// exemplarValue - the value of an exemplar, whether it holds an int or a
+// double
+//
+//	@param exemplar
+//	@return float64
+func exemplarValue(exemplar pmetric.Exemplar) float64 {
+	if exemplar.ValueType() == pmetric.ExemplarValueTypeInt {
+		return float64(exemplar.IntValue())
+	}
+	return exemplar.DoubleValue()
 }

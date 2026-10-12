@@ -21,6 +21,8 @@ type kineticaMetricsExporter struct {
 	logger *zap.Logger
 
 	writer *KiWriter
+	// v2 writes the v2 table layout; nil for v1
+	v2 *metricsV2Writer
 }
 
 // Metrics handling
@@ -139,7 +141,7 @@ func newMetricsExporter(_ *zap.Logger, cfg *Config) (*kineticaMetricsExporter, e
 	}
 
 	kineticaLogger := cfg.createLogger()
-	writer := NewKiWriter(context.TODO(), *cfg, kineticaLogger)
+	writer := NewKiWriter(*cfg, kineticaLogger)
 	metricsExp := &kineticaMetricsExporter{
 		logger: kineticaLogger,
 		writer: writer,
@@ -149,6 +151,10 @@ func newMetricsExporter(_ *zap.Logger, cfg *Config) (*kineticaMetricsExporter, e
 
 func (e *kineticaMetricsExporter) start(ctx context.Context, _ component.Host) error {
 
+	if err := e.writer.Connect(ctx); err != nil {
+		return err
+	}
+
 	fmt.Println("SCHEMA NAME - ", e.writer.cfg.Schema)
 
 	if e.writer.cfg.Schema != "" && len(e.writer.cfg.Schema) != 0 {
@@ -157,6 +163,20 @@ func (e *kineticaMetricsExporter) start(ctx context.Context, _ component.Host) e
 			return err
 		}
 	}
+
+	if e.writer.cfg.MetricsSchema == MetricsSchemaV2 {
+		ddls := metricsV2TableDDLs(e.writer.cfg.MetricsV2.LabelsAnalyzer)
+		if err := createTablesForMetricType(ctx, ddls, e.writer); err != nil {
+			return err
+		}
+		v2, err := newMetricsV2Writer(ctx, e.writer)
+		if err != nil {
+			return err
+		}
+		e.v2 = v2
+		return nil
+	}
+
 	err := createMetricTables(ctx, e.writer)
 	return err
 }
@@ -246,7 +266,23 @@ func createSchema(ctx context.Context, kiWriter *KiWriter, config Config) error 
 
 // shutdown will shut down the exporter.
 func (e *kineticaMetricsExporter) shutdown(_ context.Context) error {
-	return nil
+	var errs error
+	if e.v2 != nil {
+		errs = multierr.Append(errs, e.v2.close())
+		e.v2 = nil
+	}
+	return multierr.Append(errs, e.writer.Close())
+}
+
+// pushMetricsDataV2 - called by the collector to feed the metrics data to
+// the exporter, when it writes the v2 table layout
+//
+//	@receiver e
+//	@param _ ctx unused
+//	@param md
+//	@return error
+func (e *kineticaMetricsExporter) pushMetricsDataV2(_ context.Context, md pmetric.Metrics) error {
+	return e.v2.write(md)
 }
 
 // pushMetricsData - this method is called by the collector to feed the metrics data to the exporter
@@ -256,7 +292,6 @@ func (e *kineticaMetricsExporter) shutdown(_ context.Context) error {
 //	@param md
 //	@return error
 func (e *kineticaMetricsExporter) pushMetricsData(_ context.Context, md pmetric.Metrics) error {
-	var metricType pmetric.MetricType
 	var errs []error
 
 	var gaugeRecords []kineticaGaugeRecord
@@ -283,7 +318,6 @@ func (e *kineticaMetricsExporter) pushMetricsData(_ context.Context, md pmetric.
 			for k := 0; k < metricSlice.Len(); k++ {
 
 				metric := metricSlice.At(k)
-				metricType = metric.Type()
 				switch metric.Type() {
 				case pmetric.MetricTypeGauge:
 					gaugeRecord, err := e.createGaugeRecord(resAttr, metrics.SchemaUrl(), scopeInstr, scopeURL, metric.Gauge(), metric.Name(), metric.Description(), metric.Unit())
@@ -350,35 +384,27 @@ func (e *kineticaMetricsExporter) pushMetricsData(_ context.Context, md pmetric.
 
 	e.logger.Debug("Before writing metrics into Kinetica")
 
-	switch metricType {
-	case pmetric.MetricTypeGauge:
-		if err := e.writer.persistGaugeRecord(gaugeRecords); err != nil {
+	// A batch can hold every metric type: persist each one present
+	persist := []struct {
+		count   int
+		persist func() error
+	}{
+		{len(gaugeRecords), func() error { return e.writer.persistGaugeRecord(gaugeRecords) }},
+		{len(sumRecords), func() error { return e.writer.persistSumRecord(sumRecords) }},
+		{len(histogramRecords), func() error { return e.writer.persistHistogramRecord(histogramRecords) }},
+		{len(exponentialHistogramRecords), func() error {
+			return e.writer.persistExponentialHistogramRecord(exponentialHistogramRecords)
+		}},
+		{len(summaryRecords), func() error { return e.writer.persistSummaryRecord(summaryRecords) }},
+	}
+	for _, p := range persist {
+		if p.count == 0 {
+			continue
+		}
+		if err := p.persist(); err != nil {
 			errs = append(errs, err)
 			e.logger.Error(err.Error())
 		}
-	case pmetric.MetricTypeSum:
-		if err := e.writer.persistSumRecord(sumRecords); err != nil {
-			errs = append(errs, err)
-			e.logger.Error(err.Error())
-		}
-	case pmetric.MetricTypeHistogram:
-		if err := e.writer.persistHistogramRecord(histogramRecords); err != nil {
-			errs = append(errs, err)
-			e.logger.Error(err.Error())
-		}
-	case pmetric.MetricTypeExponentialHistogram:
-		if err := e.writer.persistExponentialHistogramRecord(exponentialHistogramRecords); err != nil {
-			errs = append(errs, err)
-			e.logger.Error(err.Error())
-		}
-	case pmetric.MetricTypeSummary:
-		if err := e.writer.persistSummaryRecord(summaryRecords); err != nil {
-			errs = append(errs, err)
-			e.logger.Error(err.Error())
-		}
-	default:
-		return fmt.Errorf("Unsupported metrics type")
-
 	}
 	return multierr.Combine(errs...)
 }
@@ -628,7 +654,7 @@ func (e *kineticaMetricsExporter) createExponentialHistogramRecord(resAttr pcomm
 				DatapointID:    expHistogramDatapoint.ID,
 				ExemplarID:     uuid.New().String(),
 				TimeUnix:       exemplar.Timestamp().AsTime().UnixMilli(),
-				HistogramValue: exemplar.DoubleValue(),
+				HistogramValue: exemplarValue(exemplar),
 				TraceID:        exemplar.TraceID().String(),
 				SpanID:         exemplar.SpanID().String(),
 			}
@@ -844,7 +870,7 @@ func (e *kineticaMetricsExporter) createHistogramRecord(resAttr pcommon.Map, _ s
 				DatapointID:    histogramDatapoint.ID,
 				ExemplarID:     uuid.New().String(),
 				TimeUnix:       exemplar.Timestamp().AsTime().UnixMilli(),
-				HistogramValue: exemplar.DoubleValue(),
+				HistogramValue: exemplarValue(exemplar),
 				TraceID:        exemplar.TraceID().String(),
 				SpanID:         exemplar.SpanID().String(),
 			}
@@ -1019,7 +1045,7 @@ func (e *kineticaMetricsExporter) createSumRecord(resAttr pcommon.Map, _ string,
 			ID:            uuid.New().String(),
 			StartTimeUnix: datapoint.StartTimestamp().AsTime().UnixMilli(),
 			TimeUnix:      datapoint.Timestamp().AsTime().UnixMilli(),
-			SumValue:      datapoint.DoubleValue(),
+			SumValue:      numberDataPointValue(datapoint),
 			Flags:         int(datapoint.Flags()),
 		}
 		kiSumRecord.datapoint = append(kiSumRecord.datapoint, sumDatapoint)
@@ -1062,7 +1088,7 @@ func (e *kineticaMetricsExporter) createSumRecord(resAttr pcommon.Map, _ string,
 				DatapointID: sumDatapoint.ID,
 				ExemplarID:  uuid.New().String(),
 				TimeUnix:    exemplar.Timestamp().AsTime().UnixMilli(),
-				SumValue:    exemplar.DoubleValue(),
+				SumValue:    exemplarValue(exemplar),
 				TraceID:     exemplar.TraceID().String(),
 				SpanID:      exemplar.SpanID().String(),
 			}
@@ -1220,7 +1246,7 @@ func (e *kineticaMetricsExporter) createGaugeRecord(resAttr pcommon.Map, _ strin
 			ID:            uuid.New().String(),
 			StartTimeUnix: datapoint.StartTimestamp().AsTime().UnixMilli(),
 			TimeUnix:      datapoint.Timestamp().AsTime().UnixMilli(),
-			GaugeValue:    datapoint.DoubleValue(),
+			GaugeValue:    numberDataPointValue(datapoint),
 			Flags:         int(datapoint.Flags()),
 		}
 		kiGaugeRecord.datapoint = append(kiGaugeRecord.datapoint, gaugeDatapoint)
@@ -1262,7 +1288,7 @@ func (e *kineticaMetricsExporter) createGaugeRecord(resAttr pcommon.Map, _ strin
 				DatapointID: gaugeDatapoint.ID,
 				ExemplarID:  uuid.New().String(),
 				TimeUnix:    exemplar.Timestamp().AsTime().UnixMilli(),
-				GaugeValue:  exemplar.DoubleValue(),
+				GaugeValue:  exemplarValue(exemplar),
 				TraceID:     exemplar.TraceID().String(),
 				SpanID:      exemplar.SpanID().String(),
 			}

@@ -55,7 +55,7 @@ func newTracesExporter(logger *zap.Logger, cfg *Config) (*kineticaTracesExporter
 		return nil, err
 	}
 
-	writer := NewKiWriter(context.TODO(), *cfg, logger)
+	writer := NewKiWriter(*cfg, logger)
 	tracesExp := &kineticaTracesExporter{
 		logger: logger,
 		writer: writer,
@@ -64,6 +64,10 @@ func newTracesExporter(logger *zap.Logger, cfg *Config) (*kineticaTracesExporter
 }
 
 func (e *kineticaTracesExporter) start(ctx context.Context, _ component.Host) error {
+
+	if err := e.writer.Connect(ctx); err != nil {
+		return err
+	}
 
 	// No schema specified in config
 	fmt.Println("SCHEMA NAME - ", e.writer.cfg.Schema)
@@ -80,7 +84,7 @@ func (e *kineticaTracesExporter) start(ctx context.Context, _ component.Host) er
 
 // shutdown will shut down the exporter.
 func (e *kineticaTracesExporter) shutdown(_ context.Context) error {
-	return nil
+	return e.writer.Close()
 }
 
 // createTraceTables
