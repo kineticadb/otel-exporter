@@ -1,0 +1,321 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "What the exporter has written in the v2 metrics layout: metrics, series, labels and ingest volume.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Inventory\nThe metrics, series and labels in the v2 metrics layout, and the points written. Reads the schema **otel**; for another schema, replace `otel.` in the panel queries."
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Metrics",
+      "description": "Every metric, with its number of series and services.",
+      "datasource": {
+        "type": "kinetica-datasource",
+        "uid": "${DS_KINETICA}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "first_seen"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "kinetica-datasource",
+            "uid": "${DS_KINETICA}"
+          },
+          "refId": "A",
+          "rawSql": "SELECT metric_name, metric_type, unit,\n       COUNT(*) AS series,\n       COUNT(DISTINCT service_name) AS services,\n       MIN(first_seen) AS first_seen\nFROM otel.metric_series\nGROUP BY metric_name, metric_type, unit\nORDER BY series DESC, metric_name"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Series per service",
+      "description": "Series and metrics of each service (service.name).",
+      "datasource": {
+        "type": "kinetica-datasource",
+        "uid": "${DS_KINETICA}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "kinetica-datasource",
+            "uid": "${DS_KINETICA}"
+          },
+          "refId": "A",
+          "rawSql": "SELECT COALESCE(service_name, '(none)') AS service,\n       COUNT(*) AS series,\n       COUNT(DISTINCT metric_name) AS metric_names\nFROM otel.metric_series\nGROUP BY COALESCE(service_name, '(none)')\nORDER BY series DESC"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Label keys",
+      "description": "Every label key, with the number of series having it: the cardinality to watch.",
+      "datasource": {
+        "type": "kinetica-datasource",
+        "uid": "${DS_KINETICA}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "kinetica-datasource",
+            "uid": "${DS_KINETICA}"
+          },
+          "refId": "A",
+          "rawSql": "SELECT label, COUNT(*) AS series\nFROM UNNEST_JSON_OBJECT(SELECT labels FROM otel.metric_series) t(label, label_value)\nGROUP BY label\nORDER BY series DESC, label"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Points written per minute",
+      "description": "Rows written to each point table.",
+      "datasource": {
+        "type": "kinetica-datasource",
+        "uid": "${DS_KINETICA}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "kinetica-datasource",
+            "uid": "${DS_KINETICA}"
+          },
+          "refId": "A",
+          "rawSql": "SELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'number' AS point_table, COUNT(*) AS points\nFROM otel.metric_number_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'histogram' AS point_table, COUNT(*) AS points\nFROM otel.metric_histogram_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'exp_histogram' AS point_table, COUNT(*) AS points\nFROM otel.metric_exp_histogram_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'summary' AS point_table, COUNT(*) AS points\nFROM otel.metric_summary_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "time_unix",
+                "destinationType": "time"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "prepareTimeSeries",
+          "options": {
+            "format": "multi"
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "New series per hour",
+      "description": "Series seen for the first time, per metric type.",
+      "datasource": {
+        "type": "kinetica-datasource",
+        "uid": "${DS_KINETICA}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "kinetica-datasource",
+            "uid": "${DS_KINETICA}"
+          },
+          "refId": "A",
+          "rawSql": "SELECT TIME_BUCKET(3600000, first_seen) AS first_seen, metric_type, COUNT(*) AS new_series\nFROM otel.metric_series\nWHERE first_seen BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(3600000, first_seen), metric_type\nORDER BY first_seen"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "first_seen",
+                "destinationType": "time"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "prepareTimeSeries",
+          "options": {
+            "format": "multi"
+          }
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "opentelemetry",
+    "kinetica",
+    "metrics"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Kinetica",
+        "multi": false,
+        "name": "DS_KINETICA",
+        "options": [],
+        "query": "kinetica-datasource",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "OTel metrics on Kinetica / Inventory",
+  "uid": "kinetica-otel-inventory",
+  "version": 1,
+  "weekStart": ""
+}

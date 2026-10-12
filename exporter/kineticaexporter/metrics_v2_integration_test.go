@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +104,48 @@ JOIN ` + table(MetricNumberPointTable) + ` p ON p.series_id = s.series_id`
 		assert.EqualValues(t, 2, count(t, sql))
 	})
 
+	t.Run("rollups", func(t *testing.T) {
+		templates, err := loadSQLTemplates(sqlTemplateFiles[1])
+		require.NoError(t, err)
+		for _, tpl := range templates {
+			sql, err := tpl.render(sampleTemplateValues(schema))
+			require.NoError(t, err)
+			_, err = client.Execute(ctx, sql)
+			require.NoError(t, err, tpl.name)
+		}
+		_, err = client.Execute(ctx, "EXECUTE PROCEDURE "+schema+".rollup_metric_number_point_1m")
+		assert.NoError(t, err)
+	})
+
+	t.Run("query templates", func(t *testing.T) {
+		templates, err := loadSQLTemplates(sqlTemplateFiles[0])
+		require.NoError(t, err)
+		for _, tpl := range templates {
+			t.Run(tpl.name, func(t *testing.T) {
+				values := sampleTemplateValues(schema)
+				values["metric"] = templateTestMetric(tpl.name)
+				sql, err := tpl.render(values)
+				require.NoError(t, err)
+				_, err = client.Execute(ctx, sql)
+				assert.NoError(t, err, sql)
+			})
+		}
+	})
+
+	t.Run("dashboard queries", func(t *testing.T) {
+		for file, dashboard := range loadDashboards(t) {
+			for _, panel := range dashboard.Panels {
+				for _, target := range panel.Targets {
+					t.Run(file+"/"+panel.Title, func(t *testing.T) {
+						sql := withSchema(expandPluginMacros(target.RawSQL, testTime.Add(-time.Hour), testTime.Add(time.Hour)), schema)
+						_, err := client.Execute(ctx, sql)
+						assert.NoError(t, err, sql)
+					})
+				}
+			}
+		}
+	})
+
 	t.Run("a retried export adds no series or points", func(t *testing.T) {
 		require.NoError(t, exp.pushMetricsDataV2(ctx, newTestMetrics()))
 		exp.v2.cache = newSeriesCache(0) // as after a restart
@@ -112,4 +155,17 @@ JOIN ` + table(MetricNumberPointTable) + ` p ON p.series_id = s.series_id`
 		assert.EqualValues(t, 3, count(t, "SELECT COUNT(*) FROM "+table(MetricNumberPointTable)))
 		assert.EqualValues(t, 1, count(t, "SELECT COUNT(*) FROM "+table(MetricHistogramPointTable)))
 	})
+}
+
+// templateTestMetric - a metric of newTestMetrics of the type a query
+// template reads
+func templateTestMetric(template string) string {
+	switch {
+	case strings.HasPrefix(template, "histogram_"), strings.HasPrefix(template, "exemplars_"):
+		return "http.server.request.duration"
+	case strings.HasPrefix(template, "counter_"), strings.HasPrefix(template, "delta_"):
+		return "http.server.requests"
+	default:
+		return "http.server.active_requests"
+	}
 }
