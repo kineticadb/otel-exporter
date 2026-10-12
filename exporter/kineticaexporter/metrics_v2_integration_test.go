@@ -26,32 +26,8 @@ import (
 // KINETICA_TEST_PASSWORD). It works in a schema of its own, dropped at the
 // end.
 func TestMetricsV2Integration(t *testing.T) {
-	url := os.Getenv("KINETICA_TEST_URL")
-	if url == "" {
-		t.Skip("set KINETICA_TEST_URL, KINETICA_TEST_USER and KINETICA_TEST_PASSWORD to run against a server")
-	}
 	ctx := context.Background()
-	schema := fmt.Sprintf("otel_it_%d", time.Now().UnixNano())
-	cfg := withDefaultConfig(func(cfg *Config) {
-		cfg.Host = url
-		cfg.Username = os.Getenv("KINETICA_TEST_USER")
-		cfg.Password = configopaque.String(os.Getenv("KINETICA_TEST_PASSWORD"))
-		cfg.Schema = schema
-		cfg.MetricsSchema = MetricsSchemaV2
-	})
-
-	exp, err := newMetricsExporter(zap.NewNop(), cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, exp.shutdown(ctx))
-		db, err := GetGpuDbInst(ctx, cfg)
-		if assert.NoError(t, err) {
-			_, err = db.Execute(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
-			assert.NoError(t, err)
-			assert.NoError(t, db.Close())
-		}
-	})
-	require.NoError(t, exp.start(ctx, componenttest.NewNopHost()))
+	exp, schema := startLiveMetricsV2(t, "otel_it")
 
 	client, err := kinetica.NewSQLClient(exp.writer.GetDb())
 	require.NoError(t, err)
@@ -168,4 +144,42 @@ func templateTestMetric(template string) string {
 	default:
 		return "http.server.active_requests"
 	}
+}
+
+// startLiveMetricsV2 - a started v2 metrics exporter writing to a schema of
+// its own on the server KINETICA_TEST_URL names, which is dropped when the
+// test ends; the test is skipped when KINETICA_TEST_URL is not set
+//
+//	@param schemaPrefix - the start of the schema's name
+//	@return *kineticaMetricsExporter
+//	@return string - the schema
+func startLiveMetricsV2(t *testing.T, schemaPrefix string) (*kineticaMetricsExporter, string) {
+	t.Helper()
+	url := os.Getenv("KINETICA_TEST_URL")
+	if url == "" {
+		t.Skip("set KINETICA_TEST_URL, KINETICA_TEST_USER and KINETICA_TEST_PASSWORD to run against a server")
+	}
+	ctx := context.Background()
+	schema := fmt.Sprintf("%s_%d", schemaPrefix, time.Now().UnixNano())
+	cfg := withDefaultConfig(func(cfg *Config) {
+		cfg.Host = url
+		cfg.Username = os.Getenv("KINETICA_TEST_USER")
+		cfg.Password = configopaque.String(os.Getenv("KINETICA_TEST_PASSWORD"))
+		cfg.Schema = schema
+		cfg.MetricsSchema = MetricsSchemaV2
+	})
+
+	exp, err := newMetricsExporter(zap.NewNop(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, exp.shutdown(ctx))
+		db, err := GetGpuDbInst(ctx, cfg)
+		if assert.NoError(t, err) {
+			_, err = db.Execute(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+			assert.NoError(t, err)
+			assert.NoError(t, db.Close())
+		}
+	})
+	require.NoError(t, exp.start(ctx, componenttest.NewNopHost()))
+	return exp, schema
 }

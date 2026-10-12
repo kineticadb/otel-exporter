@@ -218,9 +218,12 @@ KINETICA_SQL_JAR=/path/to/gpudbsql-7.2.3.0.jar tools/sqlcheck/check.sh
 ```
 
 To run everything against a server instead, set `KINETICA_TEST_URL`, `KINETICA_TEST_USER` and
-`KINETICA_TEST_PASSWORD` and run `go test -run TestMetricsV2Integration .`: the test writes metrics to
-a schema of its own, creates the rollups, runs every template and dashboard query, and drops the
-schema.
+`KINETICA_TEST_PASSWORD`, then run `go test -run 'TestMetricsV2Integration|TestMetricsV2Spike' .`. Each
+test writes metrics to a schema of its own, which it drops at the end. `TestMetricsV2Integration` runs
+every template and dashboard query; `TestMetricsV2Spike` writes metrics whose results are known and
+checks the exact values the label searches, templates, rollups and dashboard queries return. Setting
+`KINETICA_TEST_LOAD` to a number of points (e.g. `2000000`) also runs `TestMetricsV2Load`, which
+reports the write rate with and without concurrent label searches, and with a stream of new series.
 
 ```yaml
 exporters:

@@ -186,7 +186,7 @@
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
-          "rawSql": "SELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'number' AS point_table, COUNT(*) AS points\nFROM otel.metric_number_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'histogram' AS point_table, COUNT(*) AS points\nFROM otel.metric_histogram_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'exp_histogram' AS point_table, COUNT(*) AS points\nFROM otel.metric_exp_histogram_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT TIME_BUCKET(60000, time_unix) AS time_unix, 'summary' AS point_table, COUNT(*) AS points\nFROM otel.metric_summary_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)"
+          "rawSql": "SELECT MSECS_SINCE_EPOCH(TIME_BUCKET(60000, time_unix)) AS time_unix, 'number' AS point_table, COUNT(*) AS points\nFROM otel.metric_number_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT MSECS_SINCE_EPOCH(TIME_BUCKET(60000, time_unix)) AS time_unix, 'histogram' AS point_table, COUNT(*) AS points\nFROM otel.metric_histogram_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT MSECS_SINCE_EPOCH(TIME_BUCKET(60000, time_unix)) AS time_unix, 'exp_histogram' AS point_table, COUNT(*) AS points\nFROM otel.metric_exp_histogram_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)\nUNION ALL\nSELECT MSECS_SINCE_EPOCH(TIME_BUCKET(60000, time_unix)) AS time_unix, 'summary' AS point_table, COUNT(*) AS points\nFROM otel.metric_summary_point\nWHERE time_unix BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(60000, time_unix)"
         }
       ],
       "transformations": [
@@ -258,7 +258,7 @@
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
-          "rawSql": "SELECT TIME_BUCKET(3600000, first_seen) AS first_seen, metric_type, COUNT(*) AS new_series\nFROM otel.metric_series\nWHERE first_seen BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(3600000, first_seen), metric_type\nORDER BY first_seen"
+          "rawSql": "SELECT MSECS_SINCE_EPOCH(TIME_BUCKET(3600000, first_seen)) AS first_seen, metric_type, COUNT(*) AS new_series\nFROM otel.metric_series\nWHERE first_seen BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY TIME_BUCKET(3600000, first_seen), metric_type\nORDER BY first_seen"
         }
       ],
       "transformations": [

@@ -22,7 +22,8 @@
 -- strings. A text-search function evaluates against a single table, so it is
 -- always used in a subquery on metric_series, whose series_ids are then
 -- joined to a point table. Rates assume cumulative temporality (2) unless
--- the template says otherwise.
+-- the template says otherwise. A LONG times a decimal literal is a DECIMAL(28,6)
+-- in Kinetica, so counts are cast to DOUBLE before any division.
 
 -- name: series_search
 -- The series of a metric with a label of an exact value.
@@ -118,9 +119,10 @@ FROM (
     FROM (
         SELECT p.series_id, p.time_unix,
                JSON_VALUE(s.labels, '$["{{label}}"]') AS label_value,
-               (CASE WHEN p.value >= LAG(p.value) OVER (PARTITION BY p.series_id ORDER BY p.time_unix)
+               CAST(CASE WHEN LAG(p.value) OVER (PARTITION BY p.series_id ORDER BY p.time_unix) IS NULL THEN NULL
+                     WHEN p.value >= LAG(p.value) OVER (PARTITION BY p.series_id ORDER BY p.time_unix)
                      THEN p.value - LAG(p.value) OVER (PARTITION BY p.series_id ORDER BY p.time_unix)
-                     ELSE p.value END) * 1000.0
+                     ELSE p.value END AS DOUBLE) * 1000
                / (MSECS_SINCE_EPOCH(p.time_unix)
                   - LAG(MSECS_SINCE_EPOCH(p.time_unix)) OVER (PARTITION BY p.series_id ORDER BY p.time_unix)) AS sample_rate
         FROM {{schema}}.metric_number_point p
@@ -144,7 +146,7 @@ FROM (
     SELECT TIME_BUCKET({{bucket_ms}}, p.time_unix) AS bucket,
            p.series_id,
            JSON_VALUE(s.labels, '$["{{label}}"]') AS label_value,
-           AVG(p.value * 1000.0 / (MSECS_SINCE_EPOCH(p.time_unix) - MSECS_SINCE_EPOCH(p.start_time_unix))) AS series_rate
+           AVG(p.value * 1000 / (MSECS_SINCE_EPOCH(p.time_unix) - MSECS_SINCE_EPOCH(p.start_time_unix))) AS series_rate
     FROM {{schema}}.metric_number_point p
     JOIN (SELECT series_id, labels FROM {{schema}}.metric_series
            WHERE metric_name = '{{metric}}' AND temporality = 1) s
@@ -168,9 +170,10 @@ FROM (
     FROM (
         SELECT h.series_id, h.time_unix,
                JSON_VALUE(s.labels, '$["{{label}}"]') AS label_value,
-               (CASE WHEN h.data_count >= LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
+               CAST(CASE WHEN LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix) IS NULL THEN NULL
+                     WHEN h.data_count >= LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
                      THEN h.data_count - LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
-                     ELSE h.data_count END) * 1000.0
+                     ELSE h.data_count END AS DOUBLE) * 1000
                / (MSECS_SINCE_EPOCH(h.time_unix)
                   - LAG(MSECS_SINCE_EPOCH(h.time_unix)) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)) AS sample_rate
         FROM {{schema}}.metric_histogram_point h
@@ -194,10 +197,12 @@ SELECT bucket AS time_unix, label_value, SUM(sum_increase) / SUM(count_increase)
 FROM (
     SELECT TIME_BUCKET({{bucket_ms}}, h.time_unix) AS bucket,
            JSON_VALUE(s.labels, '$["{{label}}"]') AS label_value,
-           CASE WHEN h.data_count >= LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
+           CASE WHEN LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix) IS NULL THEN NULL
+                WHEN h.data_count >= LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
                 THEN h.data_sum - LAG(h.data_sum) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
                 ELSE h.data_sum END AS sum_increase,
-           CASE WHEN h.data_count >= LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
+           CASE WHEN LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix) IS NULL THEN NULL
+                WHEN h.data_count >= LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
                 THEN h.data_count - LAG(h.data_count) OVER (PARTITION BY h.series_id ORDER BY h.time_unix)
                 ELSE h.data_count END AS count_increase
     FROM {{schema}}.metric_histogram_point h
@@ -215,8 +220,8 @@ ORDER BY bucket, label_value;
 -- per bucket. Each bucket's upper bound is null for the last (+Inf) bucket.
 -- params: schema, metric, from, to
 SELECT b.idx AS bucket_index,
-       MAX(CAST(b.upper_bound AS DOUBLE)) AS upper_bound,
-       SUM(CAST(b.bucket_count AS BIGINT)) AS observations
+       MAX(CAST(STRING(b.upper_bound) AS DOUBLE)) AS upper_bound,
+       SUM(CAST(STRING(b.bucket_count) AS BIGINT)) AS observations
 FROM (SELECT h.explicit_bounds, h.bucket_counts
         FROM {{schema}}.metric_histogram_point h
         JOIN (SELECT series_id FROM {{schema}}.metric_series
@@ -236,7 +241,7 @@ ORDER BY b.idx;
 SELECT CASE WHEN upper_bound IS NULL THEN lower_bound
             ELSE COALESCE(lower_bound, 0)
                  + (upper_bound - COALESCE(lower_bound, 0))
-                   * ({{quantile}} * total - (cumulative - observations)) / observations
+                   * (CAST({{quantile}} AS DOUBLE) * total - (cumulative - observations)) / observations
        END AS quantile_value
 FROM (
     SELECT bucket_index, upper_bound, observations,
@@ -245,8 +250,8 @@ FROM (
            SUM(observations) OVER () AS total
     FROM (
         SELECT b.idx AS bucket_index,
-               MAX(CAST(b.upper_bound AS DOUBLE)) AS upper_bound,
-               SUM(CAST(b.bucket_count AS BIGINT)) AS observations
+               MAX(CAST(STRING(b.upper_bound) AS DOUBLE)) AS upper_bound,
+               SUM(CAST(STRING(b.bucket_count) AS BIGINT)) AS observations
         FROM (SELECT h.explicit_bounds, h.bucket_counts
                 FROM {{schema}}.metric_histogram_point h
                 JOIN (SELECT series_id FROM {{schema}}.metric_series
@@ -258,7 +263,7 @@ FROM (
     ) buckets
 ) c
 WHERE observations > 0
-  AND cumulative >= {{quantile}} * total
+  AND cumulative >= CAST({{quantile}} AS DOUBLE) * total
 ORDER BY bucket_index
 LIMIT 1;
 

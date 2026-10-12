@@ -12,6 +12,9 @@ queries name the schema (otel) and use only the plugin's own macros. It marks
 a result column as time only when it has the name of a TIMESTAMP column of the
 first table named after FROM, so every time series query starts from a point
 table (or metric_series) and calls its time column after one of that table's.
+TIME_BUCKET returns a datetime string, which Grafana would read in the
+browser's time zone, so each time column is MSECS_SINCE_EPOCH of its bucket:
+milliseconds since the epoch, in UTC.
 """
 import json
 import sys
@@ -30,15 +33,19 @@ def lag(col, alias):
 
 def increase(alias, col, guard=None):
     """The increase of a cumulative column over the previous sample of its
-    series; the value itself after a reset, detected on the guard column."""
+    series; the value itself after a reset, detected on the guard column; null
+    for a series' first sample, which has no previous one."""
     guard = guard or col
-    return (f"CASE WHEN {alias}.{guard} >= {lag(f'{alias}.{guard}', alias)}\n"
+    previous = lag(f'{alias}.{guard}', alias)
+    return (f"CASE WHEN {previous} IS NULL THEN NULL\n"
+            f"                     WHEN {alias}.{guard} >= {previous}\n"
             f"                     THEN {alias}.{col} - {lag(f'{alias}.{col}', alias)}\n"
             f"                     ELSE {alias}.{col} END")
 
 
 def per_second(alias, col):
-    return (f"({increase(alias, col)}) * 1000.0\n"
+    # A LONG times a decimal literal is a DECIMAL(28,6): cast to DOUBLE first
+    return (f"CAST({increase(alias, col)} AS DOUBLE) * 1000\n"
             f"               / (MSECS_SINCE_EPOCH({alias}.time_unix)\n"
             f"                  - {lag(f'MSECS_SINCE_EPOCH({alias}.time_unix)', alias)})")
 
@@ -62,7 +69,7 @@ def rate_query(table, alias, col, metric, groups, value_alias, extra_filter="", 
     select_outer = outer or f"SUM(series_rate) AS {value_alias}"
     outer_cols = ", ".join(keep) if keep else group_cols
     having_clause = f"\nHAVING {having}" if having else ""
-    return f"""SELECT bucket AS time_unix, {outer_cols}, {select_outer}
+    return f"""SELECT MSECS_SINCE_EPOCH(bucket) AS time_unix, {outer_cols}, {select_outer}
 FROM (
     SELECT TIME_BUCKET({BUCKET}, time_unix) AS bucket, series_id, {group_cols},
            AVG(sample_rate) AS series_rate
@@ -88,7 +95,7 @@ def gauge_query(metric, groups, value_alias, extra_filter="", aggregate="SUM"):
     group_cols = ", ".join(name for name, _ in groups)
     group_exprs = ",\n           ".join(f"{expr} AS {name}" for name, expr in groups)
     group_by = ", ".join(expr for _, expr in groups)
-    return f"""SELECT bucket AS time_unix, {group_cols}, {aggregate}(series_value) AS {value_alias}
+    return f"""SELECT MSECS_SINCE_EPOCH(bucket) AS time_unix, {group_cols}, {aggregate}(series_value) AS {value_alias}
 FROM (
     SELECT TIME_BUCKET({BUCKET}, p.time_unix) AS bucket,
            p.series_id,
@@ -227,7 +234,7 @@ def http_dashboard():
     d.add_timeseries(
         "Mean request duration",
         "Increase of the histogram's sum over the increase of its count, per service.",
-        f"""SELECT bucket AS time_unix, service, SUM(sum_increase) / SUM(count_increase) AS mean_duration
+        f"""SELECT MSECS_SINCE_EPOCH(bucket) AS time_unix, service, SUM(sum_increase) / SUM(count_increase) AS mean_duration
 FROM (
     SELECT TIME_BUCKET({BUCKET}, h.time_unix) AS bucket,
            {SERVICE} AS service,
@@ -251,7 +258,7 @@ ORDER BY bucket, service""",
         "Requests, 5xx ratio and mean duration per service and route over the time range.",
         f"""SELECT service, route,
        SUM(count_increase) AS requests,
-       SUM(CASE WHEN is_error = 1 THEN count_increase ELSE 0 END) * 1.0 / SUM(count_increase) AS error_ratio,
+       CAST(SUM(CASE WHEN is_error = 1 THEN count_increase ELSE 0 END) AS DOUBLE) / SUM(count_increase) AS error_ratio,
        SUM(sum_increase) / SUM(count_increase) AS mean_duration
 FROM (
     SELECT {SERVICE} AS service,
@@ -311,7 +318,7 @@ def hosts_dashboard():
         "bytes")
     d.add_timeseries(
         "Filesystem utilization", "Used share of each filesystem (system.filesystem.usage), per host and mountpoint.",
-        f"""SELECT bucket AS time_unix, host, mountpoint,
+        f"""SELECT MSECS_SINCE_EPOCH(bucket) AS time_unix, host, mountpoint,
        SUM(CASE WHEN state = 'used' THEN series_value ELSE 0 END) / SUM(series_value) AS utilization
 FROM (
     SELECT TIME_BUCKET({BUCKET}, p.time_unix) AS bucket,
@@ -379,29 +386,29 @@ GROUP BY label
 ORDER BY series DESC, label""")
     d.add_timeseries(
         "Points written per minute", "Rows written to each point table.",
-        f"""SELECT TIME_BUCKET({BUCKET}, time_unix) AS time_unix, 'number' AS point_table, COUNT(*) AS points
+        f"""SELECT MSECS_SINCE_EPOCH(TIME_BUCKET({BUCKET}, time_unix)) AS time_unix, 'number' AS point_table, COUNT(*) AS points
 FROM otel.metric_number_point
 WHERE time_unix {TIME_RANGE}
 GROUP BY TIME_BUCKET({BUCKET}, time_unix)
 UNION ALL
-SELECT TIME_BUCKET({BUCKET}, time_unix) AS time_unix, 'histogram' AS point_table, COUNT(*) AS points
+SELECT MSECS_SINCE_EPOCH(TIME_BUCKET({BUCKET}, time_unix)) AS time_unix, 'histogram' AS point_table, COUNT(*) AS points
 FROM otel.metric_histogram_point
 WHERE time_unix {TIME_RANGE}
 GROUP BY TIME_BUCKET({BUCKET}, time_unix)
 UNION ALL
-SELECT TIME_BUCKET({BUCKET}, time_unix) AS time_unix, 'exp_histogram' AS point_table, COUNT(*) AS points
+SELECT MSECS_SINCE_EPOCH(TIME_BUCKET({BUCKET}, time_unix)) AS time_unix, 'exp_histogram' AS point_table, COUNT(*) AS points
 FROM otel.metric_exp_histogram_point
 WHERE time_unix {TIME_RANGE}
 GROUP BY TIME_BUCKET({BUCKET}, time_unix)
 UNION ALL
-SELECT TIME_BUCKET({BUCKET}, time_unix) AS time_unix, 'summary' AS point_table, COUNT(*) AS points
+SELECT MSECS_SINCE_EPOCH(TIME_BUCKET({BUCKET}, time_unix)) AS time_unix, 'summary' AS point_table, COUNT(*) AS points
 FROM otel.metric_summary_point
 WHERE time_unix {TIME_RANGE}
 GROUP BY TIME_BUCKET({BUCKET}, time_unix)""",
         "short", stack=True)
     d.add_timeseries(
         "New series per hour", "Series seen for the first time, per metric type.",
-        f"""SELECT TIME_BUCKET(3600000, first_seen) AS first_seen, metric_type, COUNT(*) AS new_series
+        f"""SELECT MSECS_SINCE_EPOCH(TIME_BUCKET(3600000, first_seen)) AS first_seen, metric_type, COUNT(*) AS new_series
 FROM otel.metric_series
 WHERE first_seen {TIME_RANGE}
 GROUP BY TIME_BUCKET(3600000, first_seen), metric_type
