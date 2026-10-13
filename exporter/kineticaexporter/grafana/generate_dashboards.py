@@ -20,7 +20,7 @@ import json
 import sys
 from pathlib import Path
 
-DS = {"type": "kinetica-datasource", "uid": "${DS_KINETICA}"}
+DS = {"type": "kinetica-grafana-datasource", "uid": "${DS_KINETICA}"}
 TIME_RANGE = "BETWEEN $__timeFrom() AND $__timeTo()"
 BUCKET = 60000
 HOST = "COALESCE(NULLIF(JSON_VALUE(s.labels, '$[\"host.name\"]'), ''), 'unknown')"
@@ -180,7 +180,7 @@ class Dashboard:
             "tags": ["opentelemetry", "kinetica", "metrics"],
             "templating": {"list": [{
                 "current": {}, "hide": 0, "includeAll": False, "label": "Kinetica", "multi": False,
-                "name": "DS_KINETICA", "options": [], "query": "kinetica-datasource", "refresh": 1,
+                "name": "DS_KINETICA", "options": [], "query": "kinetica-grafana-datasource", "refresh": 1,
                 "regex": "", "skipUrlSync": False, "type": "datasource",
             }]},
             "time": {"from": "now-6h", "to": "now"},

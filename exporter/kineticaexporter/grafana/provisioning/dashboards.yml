@@ -1,7 +1,8 @@
 # Grafana provisioning of the metrics dashboards. Copy grafana/dashboards
 # to the path below, and this file to Grafana's provisioning/dashboards
 # directory. The dashboards use the default instance of the Kinetica
-# datasource plugin (kinetica-datasource), through their DS_KINETICA variable.
+# datasource plugin (kinetica-grafana-datasource), through their DS_KINETICA
+# variable.
 apiVersion: 1
 
 providers:

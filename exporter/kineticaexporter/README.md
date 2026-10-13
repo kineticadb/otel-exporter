@@ -184,7 +184,7 @@ The metric tables need a Kinetica server with full-text search enabled (`enable_
 |--|--|
 | `sql/metrics/queries.sql` | Query templates: series search (exact, regex, negated), metric catalog, label names and values, gauges, counter and delta rates, histogram rates and means, histogram buckets and quantiles (experimental, delta histograms), exemplars, reads of the rollup |
 | `sql/metrics/rollups.sql` | One-minute and hourly rollups of `metric_number_point`, kept up to date by scheduled SQL procedures, and an optional retention procedure |
-| `grafana/dashboards/` | Grafana dashboards for the Kinetica datasource plugin (`kinetica-datasource`): HTTP services (semantic conventions), hosts (`hostmetrics` receiver) and an inventory of metrics, series and labels |
+| `grafana/dashboards/` | Grafana dashboards for the Kinetica datasource plugin (`kinetica-grafana-datasource`): HTTP services (semantic conventions), hosts (`hostmetrics` receiver) and an inventory of metrics, series and labels |
 | `grafana/generate_dashboards.py` | Generates the dashboards; edit it rather than the JSON |
 | `tools/sqlcheck/` | Checks the syntax of all of this SQL, and of the table DDL, with Kinetica's own SQL parser |
 

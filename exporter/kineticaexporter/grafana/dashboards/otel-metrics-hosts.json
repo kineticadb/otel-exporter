@@ -29,7 +29,7 @@
       "title": "CPU utilization",
       "description": "Share of CPU time not idle, across all CPUs of each host (system.cpu.time).",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -63,7 +63,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -97,7 +97,7 @@
       "title": "Load average (1m)",
       "description": "system.cpu.load_average.1m per host.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -131,7 +131,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -165,7 +165,7 @@
       "title": "Memory used",
       "description": "system.memory.usage in the used state, found with text_match on the series' labels.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -199,7 +199,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -233,7 +233,7 @@
       "title": "Filesystem utilization",
       "description": "Used share of each filesystem (system.filesystem.usage), per host and mountpoint.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -267,7 +267,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -301,7 +301,7 @@
       "title": "Network throughput",
       "description": "Bytes per second per host and direction (system.network.io).",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -335,7 +335,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -369,7 +369,7 @@
       "title": "Disk throughput",
       "description": "Bytes per second per host and direction (system.disk.io).",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -403,7 +403,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -449,7 +449,7 @@
         "multi": false,
         "name": "DS_KINETICA",
         "options": [],
-        "query": "kinetica-datasource",
+        "query": "kinetica-grafana-datasource",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

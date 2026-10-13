@@ -258,7 +258,7 @@ func TestDashboards(t *testing.T) {
 			variable := dashboard.Templating.List[0]
 			assert.Equal(t, "DS_KINETICA", variable.Name)
 			assert.Equal(t, "datasource", variable.Type)
-			assert.Equal(t, "kinetica-datasource", variable.Query)
+			assert.Equal(t, "kinetica-grafana-datasource", variable.Query)
 
 			for _, panel := range dashboard.Panels {
 				if panel.Type == "text" {
@@ -266,7 +266,7 @@ func TestDashboards(t *testing.T) {
 				}
 				t.Run(panel.Title, func(t *testing.T) {
 					require.NotNil(t, panel.Datasource)
-					assert.Equal(t, "kinetica-datasource", panel.Datasource.Type)
+					assert.Equal(t, "kinetica-grafana-datasource", panel.Datasource.Type)
 					assert.Equal(t, "${DS_KINETICA}", panel.Datasource.UID)
 					require.Len(t, panel.Targets, 1)
 					sql := panel.Targets[0].RawSQL

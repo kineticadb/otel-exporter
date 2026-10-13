@@ -29,7 +29,7 @@
       "title": "Requests per second",
       "description": "Observations of http.server.request.duration per second, per service.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -63,7 +63,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -97,7 +97,7 @@
       "title": "5xx responses per second",
       "description": "Requests answered with a 5xx status, found with text_match on the series' labels.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -131,7 +131,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -165,7 +165,7 @@
       "title": "Error ratio",
       "description": "Share of requests answered with a 5xx status, per service.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -199,7 +199,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -233,7 +233,7 @@
       "title": "Mean request duration",
       "description": "Increase of the histogram's sum over the increase of its count, per service.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -267,7 +267,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -301,7 +301,7 @@
       "title": "Active requests",
       "description": "http.server.active_requests, summed over each service's series.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -335,7 +335,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -369,7 +369,7 @@
       "title": "Busiest routes",
       "description": "Requests, 5xx ratio and mean duration per service and route over the time range.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -414,7 +414,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -428,7 +428,7 @@
       "title": "Slowest exemplars",
       "description": "The exemplars of http.server.request.duration with the largest values; look their trace_id up in the trace tables.",
       "datasource": {
-        "type": "kinetica-datasource",
+        "type": "kinetica-grafana-datasource",
         "uid": "${DS_KINETICA}"
       },
       "gridPos": {
@@ -461,7 +461,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "kinetica-datasource",
+            "type": "kinetica-grafana-datasource",
             "uid": "${DS_KINETICA}"
           },
           "refId": "A",
@@ -487,7 +487,7 @@
         "multi": false,
         "name": "DS_KINETICA",
         "options": [],
-        "query": "kinetica-datasource",
+        "query": "kinetica-grafana-datasource",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
