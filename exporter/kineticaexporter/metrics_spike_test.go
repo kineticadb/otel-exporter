@@ -17,7 +17,7 @@ import (
 )
 
 // spikeData - metrics whose query results are known: three samples a minute
-// apart, from base, for the series the templates and dashboards read
+// apart, from base, for the series the templates read
 type spikeData struct {
 	base time.Time
 }
@@ -44,12 +44,9 @@ func (d spikeData) templateTime(minutes int) string {
 //     then 3, an exemplar of 0.9); rpc.server.duration, a delta histogram
 //     with buckets 3, 4, 2, 1 under 0.1, 0.5, 1 and +Inf;
 //     messaging.client.sent.messages, a delta sum of 120 over a minute;
-//     http.server.active_requests, 4 then 6; system.cpu.time, idle 0 then
-//     45 and user 0 then 15; system.cpu.load_average.1m, 1.5 then 2.5;
-//     system.memory.usage, used 1000 and free 3000; system.filesystem.usage
-//     on /, used 30 and free 70; system.network.io received 0 then 6000;
-//     system.disk.io written 0 then 12000; and spike.labels, a gauge whose
-//     labels have awkward values
+//     http.server.active_requests, 4 then 6; system.cpu.load_average.1m,
+//     1.5 then 2.5; and spike.labels, a gauge whose labels have awkward
+//     values
 //   - checkout-v2 and Checkout: http.server.active_requests, 1
 func (d spikeData) metrics() pmetric.Metrics {
 	md := pmetric.NewMetrics()
@@ -164,15 +161,7 @@ func (d spikeData) metrics() pmetric.Metrics {
 	sdp.Attributes().PutStr("messaging.destination.name", "orders")
 
 	upDownCounter("http.server.active_requests", nil, 4, 6)
-	cumulativeSum("system.cpu.time", map[string]string{"cpu": "cpu0", "state": "idle"}, 0, 45)
-	cumulativeSum("system.cpu.time", map[string]string{"cpu": "cpu0", "state": "user"}, 0, 15)
 	gauge("system.cpu.load_average.1m", nil, 1.5, 2.5)
-	upDownCounter("system.memory.usage", map[string]string{"state": "used"}, 1000)
-	upDownCounter("system.memory.usage", map[string]string{"state": "free"}, 3000)
-	upDownCounter("system.filesystem.usage", map[string]string{"mountpoint": "/", "state": "used"}, 30)
-	upDownCounter("system.filesystem.usage", map[string]string{"mountpoint": "/", "state": "free"}, 70)
-	cumulativeSum("system.network.io", map[string]string{"device": "eth0", "direction": "receive"}, 0, 6000)
-	cumulativeSum("system.disk.io", map[string]string{"device": "sda", "direction": "write"}, 0, 12000)
 	gauge("spike.labels", map[string]string{
 		"deploy.time":  "2026-10-12T10:00:00Z",
 		"http.route":   "/api/v1/cart",
@@ -280,8 +269,8 @@ func abs(f float64) float64 {
 
 // TestMetricsSpike is the validation spike of the metric tables: on a
 // live server, it writes metrics whose results are known and checks the
-// values the text search, the query templates, the rollups and the
-// dashboard queries return. Skipped unless KINETICA_TEST_URL is set.
+// values the text search, the query templates and the rollups return.
+// Skipped unless KINETICA_TEST_URL is set.
 func TestMetricsSpike(t *testing.T) {
 	ctx := context.Background()
 	exp, schema := startLiveMetrics(t, "otel_spike")
@@ -451,66 +440,5 @@ func TestMetricsSpike(t *testing.T) {
 FROM %s.metric_number_point_1h r
 JOIN (SELECT series_id FROM %s WHERE metric_name = 'system.cpu.load_average.1m') s ON s.series_id = r.series_id`, schema, series))
 		assertRows(t, hourly, map[string]any{"sum_value": 4.0, "samples": 2.0})
-	})
-
-	t.Run("dashboards", func(t *testing.T) {
-		ms := func(minutes int) int64 { return data.at(minutes).UnixMilli() }
-		expected := map[string][]map[string]any{
-			"Requests per second":      {{"time_unix": ms(1), "service": "checkout", "requests_per_second": 0.5}},
-			"5xx responses per second": {{"time_unix": ms(1), "service": "checkout", "errors_per_second": 10.0 / 60}},
-			"Error ratio":              {{"time_unix": ms(1), "service": "checkout", "error_ratio": 1.0 / 3}},
-			"Mean request duration":    {{"time_unix": ms(1), "service": "checkout", "mean_duration": 7.0 / 30}},
-			"Active requests": {
-				{"time_unix": ms(0), "service": "checkout", "active_requests": 4.0},
-				{"time_unix": ms(0), "service": "checkout-v2", "active_requests": 1.0},
-				{"time_unix": ms(0), "service": "Checkout", "active_requests": 1.0},
-				{"time_unix": ms(1), "service": "checkout", "active_requests": 6.0},
-			},
-			"Busiest routes": {{"service": "checkout", "route": "/api/v1/cart", "requests": 30.0,
-				"error_ratio": 1.0 / 3, "mean_duration": 7.0 / 30}},
-			"Slowest exemplars": {{"duration": 0.9, "service": "checkout", "route": "/api/v1/cart"}},
-			"CPU utilization":   {{"time_unix": ms(1), "host": "h1", "cpu_utilization": 0.25}},
-			"Load average (1m)": {
-				{"time_unix": ms(0), "host": "h1", "load_average": 1.5},
-				{"time_unix": ms(1), "host": "h1", "load_average": 2.5},
-			},
-			"Memory used":            {{"time_unix": ms(0), "host": "h1", "used_bytes": 1000.0}},
-			"Filesystem utilization": {{"time_unix": ms(0), "host": "h1", "mountpoint": "/", "utilization": 0.3}},
-			"Network throughput":     {{"time_unix": ms(1), "host": "h1", "direction": "receive", "bytes_per_second": 100.0}},
-			"Disk throughput":        {{"time_unix": ms(1), "host": "h1", "direction": "write", "bytes_per_second": 200.0}},
-		}
-
-		for file, dashboard := range loadDashboards(t) {
-			for _, panel := range dashboard.Panels {
-				if panel.Type == "text" {
-					continue
-				}
-				t.Run(file+"/"+panel.Title, func(t *testing.T) {
-					sql := withSchema(expandPluginMacros(panel.Targets[0].RawSQL, data.at(-60), data.at(60)), schema)
-					rows, resultType := liveRows(t, db, sql)
-
-					if panel.Type == "timeseries" {
-						// The plugin turns a column into time only from a
-						// 64-bit integer: milliseconds since the epoch
-						timeColumn := resultType.ColumnByName(panel.Transformations[0].Options.Conversions[0].TargetField)
-						require.NotNil(t, timeColumn)
-						assert.Equal(t, kinetica.BaseTypeLong, timeColumn.BaseType())
-					}
-					if want, ok := expected[panel.Title]; ok {
-						// A DECIMAL reaches the plugin as a string, which a
-						// panel cannot plot or format as a number
-						for column, value := range want[0] {
-							if _, isNumber := value.(float64); isNumber {
-								assert.Contains(t, []kinetica.ColumnBaseType{kinetica.BaseTypeDouble, kinetica.BaseTypeLong},
-									resultType.ColumnByName(column).BaseType(), "type of %s", column)
-							}
-						}
-						assertRows(t, rows, want...)
-					} else {
-						assert.NotEmpty(t, rows)
-					}
-				})
-			}
-		}
 	})
 }

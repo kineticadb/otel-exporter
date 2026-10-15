@@ -184,8 +184,6 @@ The metric tables need a Kinetica server with full-text search enabled (`enable_
 |--|--|
 | `sql/metrics/queries.sql` | Query templates: series search (exact, regex, negated), metric catalog, label names and values, gauges, counter and delta rates, histogram rates and means, histogram buckets and quantiles (experimental, delta histograms), exemplars, reads of the rollup |
 | `sql/metrics/rollups.sql` | One-minute and hourly rollups of `metric_number_point`, kept up to date by scheduled SQL procedures, and an optional retention procedure |
-| `grafana/dashboards/` | Grafana dashboards for the Kinetica datasource plugin (`kinetica-grafana-datasource`): HTTP services (semantic conventions), hosts (`hostmetrics` receiver) and an inventory of metrics, series and labels |
-| `grafana/generate_dashboards.py` | Generates the dashboards; edit it rather than the JSON |
 | `tools/sqlcheck/` | Checks the syntax of all of this SQL, and of the table DDL, with Kinetica's own SQL parser |
 
 Each template starts with a `-- name:` line and lists its `{{placeholders}}` on a `-- params:` line.
@@ -200,16 +198,6 @@ WHERE text_match(labels, 'labels.service.name:"checkout"')
 
 Run `rollups.sql` once after the exporter has created its tables, replacing `{{schema}}`.
 
-The dashboards read the schema `otel`, and rates assume cumulative temporality (for delta, run the
-collector's `deltatocumulative` processor). They are written for the plugin as it is: it expands only
-`$__timeFrom()`, `$__timeTo()`, `$__timeFilter()` and the epoch macros, not dashboard variables, so the
-panels break series down by service or host instead of filtering on a variable, and the schema is
-written in each query (replace `otel.` for another one). The plugin marks a column as time only when
-it has the name of a TIMESTAMP column of the first table after `FROM`, so each time series query reads
-a point table first and calls its time bucket `time_unix`; the panels' `convertFieldType` and
-`prepareTimeSeries` transformations then make one series per breakdown value. Import them, or provision
-them with `grafana/provisioning/dashboards.yml`.
-
 To check the SQL without a server, point `KINETICA_SQL_JAR` at the `gpudbsql` jar of a Kinetica
 install (it is in `/opt/gpudb/sql` of a Kinetica container) and run:
 
@@ -219,11 +207,12 @@ KINETICA_SQL_JAR=/path/to/gpudbsql-7.2.3.0.jar tools/sqlcheck/check.sh
 
 To run everything against a server instead, set `KINETICA_TEST_URL`, `KINETICA_TEST_USER` and
 `KINETICA_TEST_PASSWORD`, then run `go test -run 'TestMetricsIntegration|TestMetricsSpike' .`. Each
-test writes metrics to a schema of its own, which it drops at the end. `TestMetricsIntegration` runs
-every template and dashboard query; `TestMetricsSpike` writes metrics whose results are known and
-checks the exact values the label searches, templates, rollups and dashboard queries return. Setting
-`KINETICA_TEST_LOAD` to a number of points (e.g. `2000000`) also runs `TestMetricsLoad`, which
-reports the write rate with and without concurrent label searches, and with a stream of new series.
+test writes metrics to a schema of its own, which it drops at the end unless
+`KINETICA_TEST_KEEP_SCHEMA` is set. `TestMetricsIntegration` runs every template;
+`TestMetricsSpike` writes metrics whose results are known and checks the exact values the label
+searches, templates and rollups return. Setting `KINETICA_TEST_LOAD` to a number of points (e.g.
+`2000000`) also runs `TestMetricsLoad`, which reports the write rate with and without concurrent
+label searches, and with a stream of new series.
 
 ```yaml
 exporters:

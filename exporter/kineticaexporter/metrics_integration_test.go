@@ -108,20 +108,6 @@ JOIN ` + table(MetricNumberPointTable) + ` p ON p.series_id = s.series_id`
 		}
 	})
 
-	t.Run("dashboard queries", func(t *testing.T) {
-		for file, dashboard := range loadDashboards(t) {
-			for _, panel := range dashboard.Panels {
-				for _, target := range panel.Targets {
-					t.Run(file+"/"+panel.Title, func(t *testing.T) {
-						sql := withSchema(expandPluginMacros(target.RawSQL, testTime.Add(-time.Hour), testTime.Add(time.Hour)), schema)
-						_, err := client.Execute(ctx, sql)
-						assert.NoError(t, err, sql)
-					})
-				}
-			}
-		}
-	})
-
 	t.Run("a retried export adds no series or points", func(t *testing.T) {
 		require.NoError(t, exp.pushMetricsData(ctx, newTestMetrics()))
 		exp.metrics.cache = newSeriesCache(0) // as after a restart
@@ -148,7 +134,8 @@ func templateTestMetric(template string) string {
 
 // startLiveMetrics - a started metrics exporter writing to a schema of
 // its own on the server KINETICA_TEST_URL names, which is dropped when the
-// test ends; the test is skipped when KINETICA_TEST_URL is not set
+// test ends unless KINETICA_TEST_KEEP_SCHEMA is set; the test is skipped when
+// KINETICA_TEST_URL is not set
 //
 //	@param schemaPrefix - the start of the schema's name
 //	@return *kineticaMetricsExporter
@@ -172,6 +159,11 @@ func startLiveMetrics(t *testing.T, schemaPrefix string) (*kineticaMetricsExport
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, exp.shutdown(ctx))
+		if os.Getenv("KINETICA_TEST_KEEP_SCHEMA") != "" {
+			// To look at the data afterwards
+			t.Logf("kept schema %s", schema)
+			return
+		}
 		db, err := GetGpuDbInst(ctx, cfg)
 		if assert.NoError(t, err) {
 			_, err = db.Execute(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
